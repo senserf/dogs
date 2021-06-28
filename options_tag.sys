@@ -1,0 +1,22 @@
+//
+// CC1350_SENSORTAG
+//
+
+// Compile in WOR support
+#define	RADIO_WOR_MODE		1
+
+#undef	LEDS_BLINKING
+#undef	LEDS_DRIVER
+
+#define	LEDS_DRIVER		1
+// We do blinking our way
+#define	LEDS_BLINKING		0
+
+// No UART
+#undef	UART_DRIVER
+#undef	UART_TCV
+#undef	DIAG_MESSAGES
+#define	UART_DRIVER		0
+#define	UART_TCV		0
+#define	DIAG_MESSAGES		0
+
