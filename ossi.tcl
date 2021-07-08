@@ -157,6 +157,8 @@ oss_command sample 0x05 {
 	lword	nsamples;
 	# Samples per minute
 	word	spm;
+	# Samples per packet
+	word	spp;
 }
 
 oss_command stop 0x06 {
@@ -170,7 +172,7 @@ oss_command ap 0x80 {
 #
 # Access point configuration
 #
-	# Node ID
+	# Node ID (setup Id)
 	word	nodeid;
 	# WOR setting for the interval (preamble length)
 	word	worprl;

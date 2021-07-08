@@ -1,22 +1,24 @@
-#if	defined(SIGNALLING_LEDS) && !defined(__leddefs_h__)
+#include "ledblink.h"
 
-#define	__leddefss_h__
+typedef	struct {
+	word bdelay, nblinks;
+} ledblink_t;
 
-word	__sig_bdelay [SIGNALLING_LEDS], __sig_nblinks [SIGNALLING_LEDS];
+static ledblink_t *all_leds;
 
 fsm __sig_blinker (word led) {
 
 	state BL_UPD:
 		// We need the third state because we want nblinks to act as
 		// a semaphore
-		if (__sig_nblinks [led])
-			__sig_nblinks [led]--;
+		if (all_leds [led] . nblinks)
+			all_leds [led] . nblinks --;
 
 	initial state BL_START:
 
-		if (__sig_nblinks [led]) {
+		if (all_leds [led] . nblinks) {
 			leds (led, 1);
-			delay (__sig_bdelay [led], BL_NEXT);
+			delay (all_leds [led] . bdelay, BL_NEXT);
 			release;
 		}
 
@@ -25,10 +27,10 @@ fsm __sig_blinker (word led) {
 	state BL_NEXT:
 
 		leds (led, 0);
-		delay (__sig_bdelay [led], BL_UPD);
+		delay (all_leds [led] . bdelay, BL_UPD);
 }
 
-static void blink (word led, word n, word d) {
+void led_blink (word led, word n, word d) {
 
 	word sb;
 
@@ -37,14 +39,14 @@ static void blink (word led, word n, word d) {
 		return;
 
 	// This tells us whether the process is running
-	sb = __sig_nblinks [led];
+	sb = all_leds [led] . nblinks;
 
 	if (n == 0) {
 		// Stop
 		if (sb > 1)
 			// Don't set it below 1 because the nonzero value means
 			// that the process is up and running
-			__sig_nblinks [led] = 1;
+			all_leds [led] . nblinks = 1;
 		return;
 	}
 
@@ -58,12 +60,19 @@ static void blink (word led, word n, word d) {
 	else if (d < 4)
 		d = 4;
 
-	__sig_bdelay [led] = d;
-	__sig_nblinks [led] = n;
+	all_leds [led] . bdelay = d;
+	all_leds [led] . nblinks = n;
 
 	if (sb == 0)
 		// Start the process
 		runfsm __sig_blinker (led);
 }
 
-#endif
+void led_init (sint nl) {
+
+	if ((all_leds = (ledblink_t*) umalloc (nl * sizeof (ledblink_t))) ==
+		NULL)
+			syserror (ERESOURCE, "led");
+
+	bzero (all_leds, nl * sizeof (ledblink_t));
+}	

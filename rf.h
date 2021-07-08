@@ -22,15 +22,19 @@
 // Packet offsets and casts
 // ============================================================================
 
-#define	MAX_PACKET_LENGTH		CC1350_MAXPLEN
-// NetId + HostId + CRC
-#define	RFPFRAME			6
+// Note that CC1350_MAXPLEN = 250, we can play with this
+#define	MAX_PACKET_LENGTH		64
+// NHId + CRC (there is just the network Id
+#define	RFPFRAME			4
 // Offset to OSS header
-#define	RFPHDOFF			4
+#define	RFPHDOFF			2
 // RFPHDOFF + OSS header
 #define	OSSFRAME			(RFPHDOFF + sizeof (oss_hdr_t))
 // Minimum length of an OSS packet (header + at least one parameter)
 #define	OSSMINPL			(RFPFRAME + sizeof (oss_hdr_t) + 2)
+// Maximum length of a packet payload
+#define	MAX_PAYLOAD_LENGTH		(MAX_PACKET_LENGTH - RFPFRAME - \
+						sizeof (oss_hdr_t))
 
 // RF packet offsets to OSS info: oss hdr
 #define	osshdr(p)		((oss_hdr_t*)(((byte*)(p)) + RFPHDOFF))
@@ -56,4 +60,7 @@
 #define	ACK_AP_FMT		130
 #define	ACK_AP_TOOLONG		131
 
+#define	set_lbt(pkt,boo)	set_pxopts (pkt, 0, boo, RADIO_DEFAULT_POWER)
+#define	tcv_endpx(msg,boo)	do { set_lbt (msg, boo); tcv_endp (msg); } \
+					while (0)
 #endif
