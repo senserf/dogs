@@ -11,23 +11,19 @@
 #include "phys_uart.h"
 #include "plug_null.h"
 
-#include "ossi.h"
-#include "rf.h"
-#include "netid.h"
+#include "osscmn.h"
 
 #include "cc1350.h"
 
 // UART packet length as a function of the payload length (2 bytes for CRC)
 #define	upl(a)		((a) + 2)
 
-#define	SIGNALLING_LEDS		2	// Two leds
-
-#include "leddefs.h"
+#include "ledblink.h"
 
 // ============================================================================
 // ============================================================================
 
-static sint		sd_rf, sd_uart;
+static sint		sd_uart;
 
 static oss_hdr_t	*CMD;		// Current command ...
 static address		PMT;		// ... - the header
@@ -73,7 +69,7 @@ static void oss_ack (word status) {
 	}
 }
 
-static void handle_command () {
+static void handle_oss_command () {
 //
 // Process a command arriving from the interface
 //
@@ -120,7 +116,7 @@ static void handle_command () {
 		if (pmt->worprl != WNONE) {
 			if (RFP.interval != (APS.worprl = pmt->worprl)) {
 				RFP.interval = pmt->worprl;
-				tcv_control (sd_rf, PHYSOPT_SETPARAMS,
+				tcv_control (RFC, PHYSOPT_SETPARAMS,
 					(address)&RFP);
 			}
 			done++;
@@ -164,7 +160,7 @@ static void handle_command () {
 
 	for (i = 0; i < APS.nworp; i++) {
 		// This is executed if WOR wakeup is set, nworp times
-		if ((msg = tcv_wnpu (WNONE, sd_rf,
+		if ((msg = tcv_wnpu (WNONE, RFC,
 		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
 			return;
 		msg [1] = APS.nodeid;
@@ -181,7 +177,7 @@ static void handle_command () {
 			return;
 		// At least once if APS.nworp == 0, ragrdless of the setting of
 		// norp
-		if ((msg = tcv_wnp (WNONE, sd_rf,
+		if ((msg = tcv_wnp (WNONE, RFC,
 		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
 			return;
 		msg [1] = APS.nodeid;
@@ -199,7 +195,7 @@ fsm receiver {
 
 		word len;
 
-		pkt = tcv_rnp (RCV_WAIT, sd_rf);
+		pkt = tcv_rnp (RCV_WAIT, RFC);
 		len = tcv_left (pkt);
 
 		if (len >= RFPFRAME + sizeof (oss_hdr_t) + 2 &&
@@ -218,34 +214,72 @@ fsm receiver {
 		tcv_endp (pkt);
 		proceed RCV_WAIT;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
+//
+// Just pass it to the OSS
+//
+	if (code & 0x80) {
+
+		switch (code) {
+
+			case MESSAGE_CODE_SBLOCK:
+
+				if (mpl == STRM_NCODES * 4)
+					// The length is fixed and known
+					process_streaming_block (ref, pkt);
+
+				return;
+
+			case MESSAGE_CODE_ETRAIN:
+
+				if (mpl == sizeof (streot_t))
+					process_streaming_eot (ref, pkt);
+				return;
+		}
+
+		// Ignore garbage
+	} else {
+
+		address msg;
+
+		if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2)) != NULL) {
+			((byte*)msg) [0] = code;
+			((byte*)msg) [1] = ref;
+			memcpy (msg + (RFPHDOFF/2), pkt, mpl);
+			tcv_endp (msg);
+		}
+	}
+}
 				
 fsm root {
 
 	state RS_INIT:
 
+		word si;
+
 		// Indicates the AP is plugged in
+		led_init (2);
 		leds (0, 1);
 
-		word si = 0xFFFF;
-
-		phys_cc1350 (0, MAX_PACKET_LENGTH);
 		phys_uart (1, OSS_PACKET_LENGTH, 0);
-		tcv_plug (0, &plug_null);
 
-		sd_rf = tcv_open (WNONE, 0, 0);		// The radio
+		osscmn_init ();
+
 		sd_uart = tcv_open (WNONE, 1, 0);	// The UART
-
+		si = 0xffff;
 		tcv_control (sd_uart, PHYSOPT_SETSID, &si);
-
-		si = NETID;
-		tcv_control (sd_rf, PHYSOPT_SETSID, &si);
-		tcv_control (sd_rf, PHYSOPT_SETPARAMS, (address)&RFP);
-		tcv_control (sd_rf, PHYSOPT_ON, NULL);
-
-		if (sd_rf < 0 || sd_uart < 0)
-			syserror (ERESOURCE, "ini");
-
-		runfsm receiver;
 
 	state RS_LOOP:
 
@@ -255,7 +289,7 @@ fsm root {
 		if (PML >= sizeof (oss_hdr_t)) {
 			PML -= sizeof (oss_hdr_t);
 			PMT = (address)(CMD + 1);
-			handle_command ();
+			handle_oss_command ();
 		} else {
 			oss_ack (ACK_AP_BAD);
 		}

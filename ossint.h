@@ -34,10 +34,6 @@ void ossint_toggle_radio ();
 void ossint_set_radio (const command_radio_t*, word);
 void ossint_motion_event (address, word);
 
-// Provided by the application
-void handle_unnumbered_packet (byte, byte, const address, int);
-void handle_numbered_packet (byte const address, int);
-
 fsm ossint_sensor_status_sender;
 
 #endif

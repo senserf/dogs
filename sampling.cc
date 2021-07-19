@@ -12,8 +12,7 @@
 word	SamplesPerMinute,	// Target rate
 	SampleSpace;		// Adjustable space to meet target rate
 
-lword	SetTime,		// Time base
-	SampleStartSecond,	// When sampling started
+lword	SampleStartSecond,	// When sampling started
 	SamplesTaken;		// Samples taken so far
 
 // ============================================================================
@@ -102,14 +101,13 @@ static void sampling_stop () {
 word sampling_start (const command_sample_t *pmt, word pml) {
 //
 // Request layout:
-//	lword	seconds;	[the clock]
 //	word	spm;		[samples per minute]
 //
 	if (Status == STATUS_STREAMING)
 		// We should be tacitly ignoring it
 		return ACK_BUSY;
 
-	if (pml < 6)
+	if (pml < 2)
 		return ACK_LENGTH;
 
 	if (Sensors == 0)
@@ -121,10 +119,6 @@ word sampling_start (const command_sample_t *pmt, word pml) {
 		SamplesPerMinute = 60;
 	else if (SamplesPerMinute > MAX_SAMPLES_PER_MINUTE)
 		SamplesPerMinute = MAX_SAMPLES_PER_MINUTE;
-
-	if (pmt->seconds)
-		// Set the time
-		SetTime = pmt->seconds - seconds ();
 
 	// Calculate a rough estimate of the inter-sample interval in msecs;
 	// we will be adjusting it to try to keep the long-term rate in samples

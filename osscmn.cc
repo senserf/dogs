@@ -16,7 +16,6 @@ static cc1350_rfparams_t RFP = {
 };
 
 sint 	RFC;
-static byte	LastRef;
 
 byte	RadioOn;
 
@@ -32,17 +31,8 @@ fsm radio_receiver {
 		// NETID is the only identifier
 		if (tcv_left (pkt) >= OSSMINPL && pkt [0] == NODE_ID) {
 			osh = osshdr (pkt);
-			if (osh->code & 0x80) {
-				// Unnumbered
-				handle_unnumbered_packet (osh->code, osh->ref,
-					osspar (pkt),
-					tcv_left (pkt) - OSSFRAME);
-			} else if (osh->ref != LastRef) {
-				LastRef = osh->ref;
-				handle_numbered_packet (osh->code,
-					osspar (pkt),
-					tcv_left (pkt) - OSSFRAME);
-			}
+			handle_rf_packet (osh->code, osh->ref, 
+				osspar (pkt), tcv_left (pkt) - OSSFRAME);
 		}
 
 		tcv_endp (pkt);
@@ -66,11 +56,11 @@ address osscmn_xpkt (byte code, byte ref, word len) {
 	return msg;
 }
 
-void osscmn_xack (word status) {
+void osscmn_xack (byte ref, word status) {
 
 	address msg;
 
-	if ((msg = osscmn_xpkt (0, LastRef, sizeof (status))) != NULL) {
+	if ((msg = osscmn_xpkt (0, ref, sizeof (status))) != NULL) {
 		osspar (msg) [0] = status;
 		tcv_endpx (msg, YES);
 	}

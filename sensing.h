@@ -121,6 +121,7 @@ typedef struct {
 #define	bmp280_data_size	(bmp280_active ? (bmp280_desc.components == \
 
 extern byte Sensors;
+extern mpu9250_desc_t mpu9250_desc;
 
 word sensing_turn (byte);
 word sensing_configure (const byte*, sint);
@@ -129,4 +130,4 @@ word sensing_report (byte*, address);
 
 #define	sensing_all_off ()	sensing_turn (0x00)
 
-#ifndef
+#endif

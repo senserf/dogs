@@ -54,7 +54,8 @@
 #define	ACK_ISOFF		6
 #define	ACK_BUSY		7
 #define	ACK_NORES		8
-#define	ACK_VOID		9
+#define	ACK_CONFIG		9
+#define	ACK_VOID		10
 
 #define	ACK_AP_BAD		129
 #define	ACK_AP_FMT		130

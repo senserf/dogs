@@ -65,7 +65,7 @@ static const byte mpu9250_desc_length [] = {
 
 static byte mpu9250_conf [] = { NO, 4, 4, 6, 3, 1, NO };
 
-static mpu9250_desc_t mpu9250_desc;
+mpu9250_desc_t mpu9250_desc;
 
 // ============================================================================
 // HDC1000

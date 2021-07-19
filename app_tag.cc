@@ -22,7 +22,8 @@
 // ============================================================================
 // ============================================================================
 
-byte	Status = STATUS_IDLE;	// Doing what
+byte	Status = STATUS_IDLE,	// Doing what
+	LastRef = 0;		// This is global, perhaps it shouldn't be
 
 // ============================================================================
 
@@ -66,9 +67,23 @@ fsm delayed_switch (byte opn) {
 
 // ============================================================================
 
-void handle_numbered_packet (byte code, const address par, word pml) {
+void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 	word ret;
+	address msg;
+
+	if (code == MESSAGE_CODE_STRACK) {
+		// Ignore ref
+		streaming_tack (ref, (byte*) par, pml);
+		return;
+
+	}
+
+	// Ignore if duplicate
+	if (ref == LastRef)
+		return;
+
+	LastRef = ref;
 
 	switch (code) {
 
@@ -136,23 +151,9 @@ void handle_numbered_packet (byte code, const address par, word pml) {
 	}
 			
 	led_blink (0, ret + 1, 64);
-	osscmn_xack (ret);
-}
 
-void handle_unnumbered_packet (byte code, byte ref, address blk, word pml) {
-
-	word off;
-	byte cmd;
-
-	cmd = (code >> 4) & 0xf;
-	off = ((((word) code) & 0xf) << 8) | ref;
-
-	if (cmd == MESSAGE_CODE_STRACK) {
-		streaming_tack (off, blk, pml);
-		return;
-	}
-
-	led_blink (0, 12, 64);
+	// Send the ack
+	osscmn_xack (LastRef, ret);
 }
 
 // ============================================================================

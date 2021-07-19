@@ -28,14 +28,9 @@
 // ============================================================================
 
 // Message codes >= 128 are special
-#define	MESSAGE_FLAG_UNNUMBERED		0x80
-// Reduced to 4 bit nibbles
-#define MESSAGE_CODE_SBLOCK		(128 >> 4)	// Streaming block
-#define MESSAGE_CODE_ETRAIN		(129 >> 4)	// End of train
-#define	MESSAGE_CODE_STRACK		(128 >> 4)	// Train ACK
-
-#define	strph_mkhd(cmd,off)	((((cmd) << 4) | ((word)(off) >> 8)) | \
-					((word)(off) << 8))
+#define MESSAGE_CODE_SBLOCK		128	// Streaming block
+#define MESSAGE_CODE_ETRAIN		129	// End of train
+#define	MESSAGE_CODE_STRACK		128 	// Train ACK (app -> tag)
 
 // 12 x 4 = 48 bytes; this is the payload size of a streaming packet
 #define	STRM_NCODES		12
@@ -79,7 +74,7 @@ struct strblk_t {
 // Queued block awaiting transmission in a car
 //
 	strblk_t	*next;		// We link them
-	lword 		bn;		// Block number
+	lword 		bn;		// Block number; we need it unpacked
 	strpw_t		block [STRM_NCODES];
 };
 
@@ -87,9 +82,16 @@ typedef	struct {
 //
 // End of train packet payload
 //
-	lword base;	// The offset arrives in the header
-	// We can put more in here; 3 bytes will do for the base
+	lword last;	// The last transmitted block number
+	word offset;	// The backward offset to the first "askable" block
 } streot_t;
+
+typedef	struct {
+//
+// ACK packet payload
+//
+	byte missing [];
+} strack_t;
 
 // ============================================================================
 
@@ -98,11 +100,10 @@ extern sint	RFC;
 
 void osscmn_init ();
 void osscmn_xpkt (byte, byte, word);
-void osscmn_xack (word);
+void osscmn_xack (byte, word);
 void osscmn_turn_radio (byte);
 
 // Provided by the application
-void handle_unnumbered_packet (byte, byte, const address, int);
-void handle_numbered_packet (byte, const address, int);
+void handle_rf_packet (byte, byte, const address, int);
 
 #endif

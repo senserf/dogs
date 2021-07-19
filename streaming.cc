@@ -12,14 +12,14 @@
 // It is impossible for the queue to contain a block whose offset from the
 // base (BHead->bn) is larger than MAX_OFFSET.
 // Addition wins, BHead is advanced (removed) if the offset turns out large.
-// We keep LSent (last block sent); the applicable base is always determined
+// We keep LastSent (last block sent); the applicable base is always determined
 // by BHead->bn (and can change anytime).
 //
-static	lword		LSent;
+static	lword		LastSent;
 static	strblk_t	*BHead, *BTail, *CBuilt, *CCar;
 static	word		NQueued, NCars, CFill;
 static	aword		TSender;
-static	byte		TSStat;
+static	byte		TSStat, LTrain;
 
 static inline lword encode (address data) {
 	return (((lword)(data [0] & 0xffc0)) << 22) |
@@ -67,8 +67,8 @@ static void add_current () {
 		BTail = (BTail -> next = CBuilt);
 
 	if (CCar == NULL && TSStat == STRM_TSSTAT_WDAT) {
-		// We don't have to do this if the train is not running;
-		// seems to do no harm, though.
+		// The train is running, and the dispatcher is waiting for a
+		// car
 		CCar = CBuilt;
 		ptrigger (TSender, TSender);
 	}
@@ -80,25 +80,38 @@ static void add_current () {
 
 static void fill_current_car (address pkt) {
 
-	lword base;
-	word off;
+	sint i;
+	lword bn = CCar -> bn;
 
-	// BHead determines the base block
-	off = (word)(CCar -> bn - (base = BHead -> bn));
-	pkt [RFPHDOFF/2] = strph_mkhd (MESSAGE_CODE_SBLOCK, off);
+	osshdr (pkt) -> code = MESSAGE_CODE_SBLOCK;
+	// The least significant byte goes into ref; this way the ref field
+	// can be used directly as a modulo-256 counter of the block
+	osshdr (pkt) -> ref = (byte) bn;
 
+	bn >>= 8;
 	for (i = 0; i < STRM_NCODES; i++) {
-		((lword*) (pkt + RFPHDOFF/2 + 1)) [i] =
-			CCar -> block [i] . code | (base & 0x3);
-		base >>= 2;
+		((lword*) osspar (pkt)) [i] =
+			CCar -> block [i] . code | (bn & 0x3);
+		bn >>= 2;
 	}
 }
 
 static void fill_eot (address pkt) {
 
-	word off = (word) (LastSent - BHead -> bn);
-	pkt [RFPHDOFF/2] = strph_mkhd (MESSAGE_CODE_ETRAIN, off);
-	((streot_t*) osspar (pkt)) -> base = BHead -> bn;
+#define	pay	((streot_t*) osspar (pkt))
+
+	osshdr (pkt) -> code = MESSAGE_CODE_ETRAIN;
+	osshdr (pkt) -> ref = LTrain;
+
+	pay -> last = LastSent;
+
+	pay -> offset = (BHead -> bn) > LastSent ? 0 :
+		(word) LastSent - BHead -> bn;
+
+	// Note that offset == 0 means 1 block (offset is the difference
+	// between LastSent and BHead->bn)
+
+#undef pay
 }
 
 fsm streaming_trainsender {
@@ -110,6 +123,7 @@ fsm streaming_trainsender {
 		NCars = 0;
 		CCar = BHead;
 		TSStat = STRM_TSSTAT_NONE;
+		LTrain++;
 
 	state ST_NEXT:
 
@@ -137,7 +151,7 @@ fsm streaming_trainsender {
 		// No LBT
 		tcv_endpx (pkt, NO);
 
-		LSent = CCar -> bn;
+		LastSent = CCar -> bn;
 		CCar = CCar -> next;
 		NCars++;
 
@@ -170,7 +184,7 @@ fsm streaming_generator {
 
 		word data [3];
 
-		// Make sure sensor is single component!!!
+		// We get precisely three value; accel is the only component
 		read_sensor (WNONE, SENSOR_MPU9250, data);
 
 		if (CBuilt == NULL) {
@@ -194,28 +208,126 @@ fsm streaming_generator {
 		delay (SampleSpace, ST_TAKE);
 }
 
-void streaming_tack (word off, address ab, word len) {
+void streaming_tack (byte ref, byte *ab, word len) {
 //
 // Process a train ACK
 //
-	
+	strblk_t *cb, *pv, *tm;
+	lword	nts;
+	sint	mp;
 
+	void next_to_stay () {
 
+		do {
+			if (mp) {
+				// Doing the bit map
+				if (mp == 7) {
+					mp == 0;
+				} else {
+	try_map:
+					nts++;
+					if (*ab & (1 << mp++))
+						return;
+				}
+				continue;
+			}
+			if (len == 0) {
+				// No more blocks
+	force_end:
+				nts = MAX_LWORD;
+				return;
+			}
+			if (*ab & 0x80) {
+				// New bit map
+				len--;
+				mp = 0;
+				goto try_map;
+			}
+			if (*ab & 0x40) {
+				if (len < 2) {
+					// This won't happen
+					len = 0;
+					goto force_end;
+				}
+				// Long offset
+				nts = LastSent - (((word)(*ab) && 0x3f) << 8) -
+					*(ab+1);
+				len -= 2;
+				return;
+			}
+			nts = LastSent - *ab;
+			return;
 
+		} while (1);
+	};
+				
+	sint must_stay () {
+
+		while (cb->bn > nts) {
+			// When we hit a block larger than next block from the
+			// ACK, the ACK block must be skipped, because it means
+			// that the requested block is not available any more
+			next_to_stay ();
+		}
+
+		if (cb->bn == nts)
+			// The block must stay
+			return 1;
+
+		// We have a block in front of the next to stay from the ACK;
+		// this also covers the case when the ACK has ended (which will
+		// cause nts to be set to MAX
+		return 0;
+	};
+
+	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain)
+		// Just ignore
+		return;
+
+	cb = BHead;		// Current
+	pv = NULL;		// Previous
+	mp = 0;
+
+	nts = 0;
+	next_to_stay ();
+
+	BTail = NULL;
+	while (cb != NULL) {
+		// Check if this block should stay
+		if (must_stay () {
+			// This will end up being set to the last non-deleted
+			// block
+			BTail = cb;
+			cb = (pv = cb) -> next;
+		} else {
+			tm = cb;
+			cb = cb -> next;
+			ufree (tm);
+			NQueued--;
+			if (pv == NULL)
+				BHead = cb;
+			else
+				pv -> next = cb;
+		}
+	}
+
+	ptrigger (TSender, TSender);
 }
 
 word streaming_start (const command_sample_t *pmt, word pml) {
 //
-// Assume same request format as for sampling
+// Assume same request format as for sampling (just the rate for now)
 //
 	if (Status == STATUS_SAMPLING)
 		return ACK_BUSY;
 
-	if (pml < 6)
+	if (pml < 2)
 		return ACK_LENGTH;
 
-	if (!mpu9250_active)
-		return ACK_VOID;
+	if (!mpu9250_active || mpu9250_desc . components != 1)
+		// The only legit component is the accel; we expect exactly
+		// 3 values from the sensor
+		return ACK_CONFIG;
 
 	if (Status == STATUS_STREAMING)
 		// Clear everything; we probably shouldn't be restarting
@@ -228,10 +340,6 @@ word streaming_start (const command_sample_t *pmt, word pml) {
 	else if (SamplesPerMinute > MAX_SAMPLES_PER_MINUTE)
 		SamplesPerMinute = MAX_SAMPLES_PER_MINUTE;
 
-	if (pmt->seconds)
-		// Set the time
-		SetTime = pmt->seconds - seconds ();
-
 	// Calculate a rough estimate of the inter-sample interval in msecs;
 	// we will be adjusting it to try to keep the long-term rate in samples
 	// per minute as close to the target as possible
@@ -243,10 +351,36 @@ word streaming_start (const command_sample_t *pmt, word pml) {
 	if (runfsm streaming_generator && runfsm sampling_corrector &&
 	    (TSender = runfsm streaming_trainsender)) {
 		Status = STATUS_STREAMING;
+		LTrain = 0;
 		return ACK_OK;
 	}
 
 	streaming_stop ();
 	Status = STATUS_IDLE;
 	return ACK_NORES;
+}
+
+void streaming_stop () {
+
+	if (Status != STATUS_STREAMING)
+		return;
+
+	killall (streaming_generator);
+	killall (sampling_corrector);
+	killall (streaming_trainsender);
+
+	if (CBuilt) {
+		ufree (CBuilt);
+		CBuilt = NULL;
+	}
+
+	while (BHead)
+		delete_front ();
+
+	NQueued = NCars = CFill = 0;
+	TSStat = STRM_TSSTAT_NONE;
+	LTrain = 0;
+	CCar = NULL;
+
+	Status = STATUS_IDLE;
 }

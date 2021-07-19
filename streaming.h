@@ -14,6 +14,7 @@
 #include "sampling.h"
 
 word streaming_start (const command_sample_t*, word);
-void streaming_tack (word, address, word);
+void streaming_stop ();
+void streaming_tack (byte, byte*, word);
 
 #endif

@@ -46,7 +46,6 @@ fsm ossint_sensor_status_sender {
 // Message format:
 //
 //	lword	uptime;
-//	lword	seconds;	[uptime + SetTime]
 //	lword	taken;		[samples taken]
 //	word	battery;
 //	word	freemem;
@@ -76,7 +75,6 @@ fsm ossint_sensor_status_sender {
 
 		pmt = (message_status_t*) osspar (msg);
 		pmt->uptime = seconds ();
-		pmt->seconds = pmt->uptime + SetTime;
 		pmt->taken = SamplesTaken;
 		pmt->battery = batt;
 		pmt->freemem = memfree (0, &(pmt->minmem));
