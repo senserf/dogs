@@ -7,6 +7,9 @@
 
 */
 
+#include "tag.h"
+#include "ossint.h"
+#include "sensing.h"
 #include "sampling.h"
 
 word	SamplesPerMinute,	// Target rate
@@ -30,7 +33,7 @@ fsm sampling_generator {
 		// Calculate the report size
 		bl = sensing_report (NULL, NULL);
 
-		if ((msg = osscmn_xpkt (message_report_code,
+		if ((msg = osscmn_xpkt (message_report_code, LastRef,
 			sizeof (message_report_t) + bl)) == NULL) {
 			// Failure, do we skip?
 			if (SampleSpace > 128) {
@@ -49,7 +52,6 @@ fsm sampling_generator {
 			&(pmt->layout));
 
 		tcv_endpx (msg, YES);
-
 		SamplesTaken++;
 		
 	initial state SM_DELAY:
@@ -90,7 +92,7 @@ fsm sampling_corrector {
 
 // ============================================================================
 
-static void sampling_stop () {
+void sampling_stop () {
 
 	killall (sampling_generator);
 	killall (sampling_corrector);

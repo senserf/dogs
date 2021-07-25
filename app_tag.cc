@@ -7,23 +7,17 @@
 
 */
 #include "tag.h"
-#include "cc1350.h"
-#include "tcvphys.h"
-#include "phys_cc1350.h"
-#include "plug_null.h"
 #include "rf.h"
 #include "ossint.h"
 #include "sensing.h"
+#include "streaming.h"
 #include "sampling.h"
 #include "ledblink.h"
 
-#define	toggle(a)		((a) = 1 - (a))
-
 // ============================================================================
 // ============================================================================
 
-byte	Status = STATUS_IDLE,	// Doing what
-	LastRef = 0;		// This is global, perhaps it shouldn't be
+byte	Status = STATUS_IDLE;	// Doing what
 
 // ============================================================================
 
@@ -34,7 +28,7 @@ fsm delayed_switch (byte opn) {
 		if (opn == RADIO_MODE_OFF || opn == RADIO_MODE_HIBERNATE) {
 			// Radio goes off or hibernate; give it one second for
 			// the ACK to get through and then proceed
-			led_blink (LED_MAIN, opn ? 64 : 16, opn ? 72 : 150);
+			led_blink (0, opn ? 64 : 16, opn ? 72 : 150);
 			delay (1024, DS_SWITCH);
 			release;
 		}
@@ -43,7 +37,7 @@ fsm delayed_switch (byte opn) {
 
 	state DS_RADIO:
 
-		switch_radio (opn);
+		osscmn_turn_radio (opn);
 		finish;
 
 	state DS_SWITCH:
@@ -61,7 +55,7 @@ fsm delayed_switch (byte opn) {
 
 	state DS_HIBERNATE:
 
-		leds_off;
+		led_stop ();
 		hibernate ();
 }
 
@@ -158,7 +152,7 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 // ============================================================================
 
-fsm button_holder (counter) {
+fsm button_holder (sint counter) {
 
 	state BH_LOOP:
 
@@ -204,15 +198,22 @@ static void buttons (word but) {
 	// Ignore the other button for now
 }
 		
-fsm root (aword sflags) {
+#ifndef __SMURPH__
 
-	word depcnt;
+fsm root (aword sflags) {
 
 	state RS_INIT:
 
 		if (sflags == 0)
 			// Start in hibernating state, wakeup on button
 			hibernate ();
+#else
+
+fsm root {
+
+	state RS_INIT:
+
+#endif
 
 		led_init (1);
 

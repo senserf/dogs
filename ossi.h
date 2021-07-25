@@ -27,14 +27,6 @@ typedef struct {
 	blob	confdata;
 } command_config_t;
 
-#define	command_ap_code	128
-typedef struct {
-	word	nodeid;
-	word	worprl;
-	byte	nworp;
-	byte	norp;
-} command_ap_t;
-
 #define	command_radio_code	2
 typedef struct {
 	word	offdelay;
@@ -54,47 +46,70 @@ typedef struct {
 
 #define	command_sample_code	5
 typedef struct {
-	lword	seconds;
-	lword	nsamples;
 	word	spm;
 } command_sample_t;
 
-#define	command_stop_code	6
+#define	command_stream_code	6
+typedef struct {
+	word	spm;
+} command_stream_t;
+
+#define	command_stop_code	7
 typedef struct {
 	byte	dummy;
 } command_stop_t;
 
-// ==================
-// Message structures
-// ==================
-
-#define	message_ap_code	128
+#define	command_ap_code	8
 typedef struct {
 	word	nodeid;
 	word	worprl;
 	byte	nworp;
 	byte	norp;
-} message_ap_t;
+} command_ap_t;
 
-#define	message_status_code	2
+// ==================
+// Message structures
+// ==================
+
+#define	message_sblock_code	128
+typedef struct {
+	lword	data [12];
+} message_sblock_t;
+
+#define	message_status_code	3
 typedef struct {
 	lword	uptime;
-	lword	seconds;
+	lword	taken;
 	lword	left;
 	word	battery;
 	word	freemem;
 	word	minmem;
 	word	rate;
 	byte	sset;
+	byte	status;
 	blob	sstat;
 } message_status_t;
 
-#define	message_report_code	3
+#define	message_report_code	5
 typedef struct {
 	word	sample;
 	word	layout;
 	blob	data;
 } message_report_t;
+
+#define	message_motion_code	6
+typedef struct {
+	word	events;
+	word	accel [3];
+} message_motion_t;
+
+#define	message_ap_code	8
+typedef struct {
+	word	nodeid;
+	word	worprl;
+	byte	nworp;
+	byte	norp;
+} message_ap_t;
 
 
 // ===================================

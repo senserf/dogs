@@ -6,13 +6,16 @@
 	This file is part of the PICOS platform
 
 */
-#ifndef	__pg_osssmn_h
+#ifndef	__pg_osscmn_h
 #define	__pg_osscmn_h
 
 //+++ osscmn.cc
 
 #include "rf.h"
 #include "ossi.h"
+#include "tcvphys.h"
+#include "plug_null.h"
+
 
 // RF params (mutable)
 #define	WOR_CYCLE		1024			// 1 second
@@ -39,13 +42,21 @@
 #define	STRM_TRAIN_LENGTH	64
 // Maximum number of stored packets
 #define	STRM_MAX_QUEUED		128
-// Maximum block offset
-#define	STRM_MAX_OFFSET		4095
+// Maximum block offset; this must be derived from the bitmap size for the Peg
+// which must be a power of two
+#define	STRM_MAP_SIZE		256
+#define	STRM_MAP_MASK		(STRM_MAP_SIZE - 1)
+// The block span is equal to 8 * MAP_SIZE - 7; this is the worst case number
+// of blocks from the actual (unaligned) offset accommodated in the map
+#define	STRM_MAX_BLOCKSPAN	(8 * STRM_MAP_SIZE - 7)
+#define	STRM_MAX_OFFSET		(STRM_MAX_BLOCKSPAN - 1)
 // TX space between cars; make it a parameter? Should be larger than the
 // intrinsic space of the driver with LBT off
 #define	STRM_CAR_SPACE		5
 // Space between EOT packets
 #define	STRM_TRAIN_SPACE	10
+// Max payload of ACK packet
+#define	STRM_MAX_ACKPAY		58
 
 // Train sender status
 #define	STRM_TSSTAT_NONE	0
@@ -86,24 +97,24 @@ typedef	struct {
 	word offset;	// The backward offset to the first "askable" block
 } streot_t;
 
-typedef	struct {
-//
-// ACK packet payload
-//
-	byte missing [];
-} strack_t;
+#define	ack_off_s(b)	(*(b) + 1)
+#define	ack_off_l(b)	((((word)(*(b)) & 0x3f) << 8) + *((b) + 1) + 1)
 
 // ============================================================================
 
-extern byte	RadioOn;
+extern byte	RadioOn, LastRef;
 extern sint	RFC;
+extern cc1350_rfparams_t RFP;
 
 void osscmn_init ();
-void osscmn_xpkt (byte, byte, word);
+address osscmn_xpkt (byte, byte, word);
 void osscmn_xack (byte, word);
 void osscmn_turn_radio (byte);
+void osscmn_rfcontrol (sint, address);
 
 // Provided by the application
-void handle_rf_packet (byte, byte, const address, int);
+void handle_rf_packet (byte, byte, const address, word);
+
+#define toggle(a)	((a) = 1 - (a))
 
 #endif

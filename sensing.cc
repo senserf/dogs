@@ -6,7 +6,10 @@
 	This file is part of the PICOS platform
 
 */
+#include "tag.h"
 #include "sensing.h"
+#include "sampling.h"
+#include "streaming.h"
 #include "ossint.h"
 
 static const word smpl_intervals [] = {
@@ -60,7 +63,7 @@ static const byte mpu9250_desc_length [] = {
 	// Based on component selection: AGCT; actually TCGA treated as bits
 	// in a value 0-15, so A = 1, CG = 6, and so on:
 	// .... = 0, ...A = 6, ..G. = 6, ..GA = 12, ...
-	0, 6, 6, 12, 6, 12, 12, 18, 2, 8, 8, 14, 8, 14, 14, 20, 4
+	0, 6, 6, 12, 6, 12, 12, 18, 2, 8, 8, 14, 8, 14, 14, 20, 2
 };
 
 static byte mpu9250_conf [] = { NO, 4, 4, 6, 3, 1, NO };
@@ -188,11 +191,10 @@ fsm mpu9250_sampler {
 	state MP_MOTION:
 
 		word values [3];
-		read_sensor (MP_MOTION, SENSOR_MPU9250, values);
+		read_mpu9250 (MP_MOTION, values);
 
 		// The number of motion events
 		mpu9250_desc.motion_events ++;
-
 		ossint_motion_event (values, mpu9250_desc.motion_events);
 
 	initial state MP_LOOP:
@@ -272,7 +274,7 @@ fsm hdc1000_sampler {
 
 	state HD_LOOP:
 
-		read_sensor (HD_LOOP, SENSOR_HDC1000, hdc1000_desc.values);
+		read_hdc1000 (HD_LOOP, hdc1000_desc.values);
 		delay (hdc1000_desc.smplint, HD_LOOP);
 }
 
@@ -308,7 +310,7 @@ static void sensor_on_hdc1000 () {
 
 static void sensor_off_hdc1000 () {
 
-	if (!hfc1000_active)
+	if (!hdc1000_active)
 		return;
 
 	hdc1000_off ();
@@ -349,7 +351,7 @@ fsm opt3001_sampler {
 
 	state OP_LOOP:
 
-		read_sensor (OP_LOOP, SENSOR_OPT3001, opt3001_desc.values);
+		read_opt3001 (OP_LOOP, opt3001_desc.values);
 		delay (opt3001_desc.smplint, OP_LOOP);
 }
 
@@ -392,8 +394,7 @@ fsm bmp280_sampler {
 
 	state BM_LOOP:
 
-		read_sensor (BM_LOOP, SENSOR_BMP280,
-			(address)(bmp280_desc.values));
+		read_bmp280 (BM_LOOP, (address)(bmp280_desc.values));
 		delay (bmp280_desc.smplint, BM_LOOP);
 }
 
@@ -446,7 +447,7 @@ static void sensor_off_bmp280 () {
 
 // ============================================================================
 
-static word configure_sensor (byte *opt, sint nopt, byte *pmt, word pml) {
+static word configure_sensor (byte *opt, sint nopt, const byte *pmt, word pml) {
 
 	sint par, val;
 
@@ -516,14 +517,14 @@ word sensing_configure (const byte *buf, sint lft) {
 
 // ============================================================================
 
-static void (*sen_turn_fun [2][NUMBER_OF_SENSORS])() = { 
+static trueconst void (*sen_turn_fun [2][NUMBER_OF_SENSORS])() = { 
 	 { sensor_on_mpu9250, sensor_on_hdc1000, sensor_on_obmicrophone,
 		sensor_on_opt3001, sensor_on_bmp280 },
 	 { sensor_off_mpu9250, sensor_off_hdc1000, sensor_off_obmicrophone,
 		sensor_off_opt3001, sensor_off_bmp280 }
 };
 
-void sensing_turn (byte s) {
+word sensing_turn (byte s) {
 //
 // Turn sensors on or off
 //
@@ -547,6 +548,9 @@ void sensing_turn (byte s) {
 
 	if (!mpu9250_active && Status == STATUS_STREAMING)
 		streaming_stop ();
+
+	// Check if not void ...
+	return ACK_OK;
 }
 
 word sensing_status (byte *where) {
@@ -607,20 +611,20 @@ word sensing_report (byte *where, address mask) {
 		// The IMU is on
 		if (mpu9250_desc.components & 0x10) {
 			// Motion report only
-			nb += 8;
+			nb += 2;
 			if (where) {
-				memcpy (where, mpu9250_desc.values, 8);
+				memcpy (where, &(mpu9250_desc.motion_events),
+					2);
 				// Zero out motion count
-				mpu9250_desc.values [3] = 0;
-				where += 8;
+				mpu9250_desc.motion_events = 0;
+				where += 2;
 				*mask |= 0x10;
 			}
 		} else {
 			nb += (cb =
 			    mpu9250_desc_length [mpu9250_desc.components]);
 			if (where) {
-				read_sensor (WNONE, SENSOR_MPU9250,
-					(address) where);
+				read_mpu9250 (WNONE, (address) where);
 				where += cb;
 				*mask |= mpu9250_desc.components;
 			}
@@ -639,8 +643,7 @@ word sensing_report (byte *where, address mask) {
 	if (Sensors & OBMICROPHONE_FLAG) {
 		nb += 8;
 		if (where) {
-			read_sensor (WNONE, SENSOR_OBMICROPHONE,
-			    (address) where);
+			read_obmicrophone (WNONE, (address) where);
 			obmicrophone_reset ();
 			where += 8;
 			*mask |= 1 << 7;
@@ -668,3 +671,112 @@ word sensing_report (byte *where, address mask) {
 
 	return nb;
 }
+
+#ifdef	__SMURPH__
+
+// ============================================================================
+// VUEE emulation
+// ============================================================================
+
+void read_mpu9250 (word st, address ret) {
+
+	word tmp;
+	sint i, nc;
+
+	read_sensor (st, SENSOR_MPU9250, &tmp);
+
+	if (!mpu9250_active) {
+		ret [0] = 0;
+		return;
+	}
+
+	if (mpu9250_desc.components == 0x10)
+		// Motion detect mode
+		nc = 3;		// 3 words
+	else
+		nc = mpu9250_data_size / 2;
+
+	// This returns a single word which we scale from 0-100 to MIN MAX
+	if (tmp > 100)
+		tmp = 100;
+
+	tmp = 0x8000 + tmp * 655;
+
+	for (i = 0; i < nc; i++) {
+		ret [i] = tmp;
+		tmp += 0x80;
+	}
+}
+
+void read_hdc1000 (word st, address ret) {
+
+	word tmp;
+	sint i, nc;
+
+	read_sensor (st, SENSOR_HDC1000, &tmp);
+
+	if ((nc = hdc1000_data_size / 2) == 0) {
+		ret [0] = 0;
+		return;
+	}
+
+	if (tmp > 100)
+		tmp = 100;
+
+	tmp = 0x8000 + tmp * 655;
+
+	for (i = 0; i < nc; i++) {
+		ret [i] = tmp;
+		tmp += 0x80;
+	}
+}
+
+void read_obmicrophone (word st, address ret) {
+
+	word tmp;
+
+	read_sensor (st, SENSOR_OBMICROPHONE, &tmp);
+
+	if (obmicrophone_active) {
+		((lword*) ret) [0] = (lword) tmp;
+		((lword*) ret) [1] = (lword) (tmp + 1);
+	} else {
+		((lword*) ret) [0] = ((lword*) ret) [1] = 0;
+	}
+}
+
+void read_opt3001 (word st, address ret) {
+
+	word tmp;
+
+	read_sensor (st, SENSOR_OPT3001, &tmp);
+
+	*ret = opt3001_active ? tmp : 0;
+}
+
+void read_bmp280 (word st, address ret) {
+
+	word tmp;
+	lword ltmp;
+	sint i, nc;
+
+	read_sensor (st, SENSOR_BMP280, &tmp);
+
+	if ((nc = bmp280_data_size/2) == 0) {
+		((lword*)ret) [0] = 0;
+		return;
+	}
+
+	if (tmp > 100)
+		tmp = 100;
+
+	ltmp = 0x80000000 + tmp * 42949672;
+
+	for (i = 0; i < nc; i++) {
+		((lword*) ret) [i] = ltmp;
+		ltmp += 0x8000;
+	}
+}
+	
+#endif
+

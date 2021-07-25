@@ -1,23 +1,3 @@
-#
-# Commands
-#
-#	configure sensor par ... par sensor par ... par ...
-#	radio on|off|hibernate
-#	radio wor offdely worinvl
-#	on sensor ... sensor
-#	off sensor ... sensor
-#	sample -frequency freq -count cnt
-#	status
-#	stop
-#	ap -node nn -wake nw -retries nr -preamble pl
-#
-#
-#	Add packed acc data: 
-#
-#		sec mod 64K, smp mod 8, prc, ns
-#		prc = 0,1,2,3 -> 16, 12, 10, 8
-#		3x10 = 30 x 4 = 16 bytes (redundancy, compression?)
-
 ###############################################################################
 # Configuration parameters ####################################################
 ###############################################################################
@@ -39,7 +19,8 @@ set SNAMES(G) 		{ "tiny" "low" "small" "medium" "big" "high" "huge"
 				"extreme" }
 
 #
-# Components by sensor. Only for those sensors that have components.
+# Components by sensor. Only for those sensors that have components. Map to
+# bits (a = 1, g = 2, c = 4, t = 8).
 #
 variable COMPS
 #
@@ -49,7 +30,7 @@ set COMPS(pressure)	"pt"
 
 #
 # Specific parameters by sensor: b = yes/no, g = graded, string = component
-# selection
+# selection.
 #
 variable CPARAMS
 #
@@ -76,7 +57,7 @@ set CPARAMS(pressure)	{
 				{ b g g g "pt" g }
 			}
 #
-# Convert sensor value to battery voltage
+# Convert battery sensor reading to battery voltage
 #
 proc sensor_to_voltage { val } {
 
@@ -89,6 +70,8 @@ proc sensor_to_voltage { val } {
 ###############################################################################
 ###############################################################################
 
+# These should match the definitions in rf.h
+
 variable ACKCODE
 
 set ACKCODE(0)		"OK"
@@ -99,12 +82,19 @@ set ACKCODE(4)		"illegal command code"
 set ACKCODE(6)		"module is off"
 set ACKCODE(7)		"module is busy"
 set ACKCODE(8)		"temporarily out of resources"
+set ACKCODE(9)		"wrong module configuration"
+set ACKCODE(10)		"void command"
+
+# These are detected by the Peg (AP)
 
 set ACKCODE(129) 	"command format error (detected by AP)"
-set ACKCODE(130)	"command too long for RF"
+set ACKCODE(130)	"command format error"
+set ACKCODE(131)	"command too long"
 
 #############################################################################
 #############################################################################
+
+# (TODO) check if the speed can be increased
 
 oss_interface -id 0x00010022 -speed 115200 -length 56 \
 	-parser { parse_cmd show_msg start_up }
@@ -151,24 +141,26 @@ oss_command sample 0x05 {
 #
 # Start sampling
 #
-	# Current time (to set)
-	lword	seconds;
-	# How many samples
-	lword	nsamples;
 	# Samples per minute
 	word	spm;
-	# Samples per packet
-	word	spp;
 }
 
-oss_command stop 0x06 {
+oss_command stream 0x06 {
+#
+# Start streaming
+#
+	# Samples per minute
+	word	spm;
+}
+
+oss_command stop 0x07 {
 #
 # Stop sampling
 #
 	byte	dummy;
 }
 
-oss_command ap 0x80 {
+oss_command ap 0x08 {
 #
 # Access point configuration
 #
@@ -185,24 +177,25 @@ oss_command ap 0x80 {
 #############################################################################
 #############################################################################
 
-oss_message status 0x02 {
+oss_message status 0x03 {
 #
 # Status info
 #
 	lword	uptime;
-	lword	seconds;
+	lword	taken;
 	lword	left;
 	word 	battery;
 	word	freemem;
 	word	minmem;
 	word	rate;
 	byte	sset;
+	byte	status;
 	# 21 bytes so far
 	# sensor conf, all sensors, 17 nibbles, 9 bytes, total = 30 (39)
 	blob	sstat;
 }
 
-oss_message report 0x03 {
+oss_message report 0x05 {
 #
 # Sensor readings
 #
@@ -217,7 +210,17 @@ oss_message report 0x03 {
 	blob	data;
 }
 
-oss_message ap 0x80 {
+oss_message motion 0x06 {
+#
+# Motion event report
+#
+	# event count
+	word	events;
+	# acceleration
+	word	accel [3];
+}
+
+oss_message ap 0x08 {
 #
 # To be extended later
 #
@@ -226,6 +229,15 @@ oss_message ap 0x80 {
 	byte	nworp;
 	byte	norp;
 }
+
+oss_message sblock 0x80 {
+#
+# A streaming block
+#
+	lword	data [12];
+}
+
+# streaming blocks interpreted separately (in a non-standard way)
 
 ##############################################################################
 ##############################################################################
@@ -250,7 +262,7 @@ proc parse_value { sel min max } {
 	return $val
 }
 
-proc parse_check_empty { } {
+proc parse_empty { } {
 
 	set cc [oss_parse -skip " \t," -match ".*" -return 1]
 	if { $cc != "" } {
@@ -258,7 +270,7 @@ proc parse_check_empty { } {
 	}
 }
 
-proc parse_grain { sel } {
+proc parse_grade { sel } {
 
 	variable SNAMES
 
@@ -276,7 +288,7 @@ proc parse_grain { sel } {
 
 	if { $ix < 0 } {
 		# impossible
-		error "impossible in parse_grain"
+		error "impossible in parse_grade"
 	}
 
 	return $ix
@@ -285,7 +297,6 @@ proc parse_grain { sel } {
 proc parse_bool { sel } {
 
 	set val [oss_parse -skip -match {^[[:alnum:]]+} -return 1]
-oss_ttyout "VAL = $val\n"
 
 	if [catch { expr { $val + 0 } } num] {
 		set val [string tolower $val]
@@ -295,13 +306,10 @@ oss_ttyout "VAL = $val\n"
 		if { $val == "n" || $val == "no" } {
 			return 0
 		}
-oss_ttyout "VALAL: $val"
 		error "illegal boolean value $val for -$sel"
 	} elseif { $num != 0 } {
-oss_ttyout "VALEX: $val"
 		return 1
 	}
-oss_ttyout "VALZR: $val"
 
 	return 0
 }
@@ -336,6 +344,7 @@ set CMDS(radio)		"parse_cmd_radio"
 set CMDS(on)		"parse_cmd_on"
 set CMDS(off)		"parse_cmd_off"
 set CMDS(sample)	"parse_cmd_sample"
+set CMDS(stream)	"parse_cmd_stream"
 set CMDS(stop)		"parse_cmd_stop"
 set CMDS(status)	"parse_cmd_status"
 set CMDS(ap)		"parse_cmd_ap"
@@ -430,7 +439,7 @@ proc parse_cmd_configure { } {
 		}
 	}
 
-	parse_check_empty
+	parse_empty
 
 	# issue the command
 	if { $bb == "" } {
@@ -478,7 +487,7 @@ proc do_config { sen } {
 			# boolean
 			set v [parse_bool $k]
 		} elseif { $m == "g" } {
-			set v [parse_grain $k]
+			set v [parse_grade $k]
 		} else {
 			# components
 			set v [parse_component $k $COMPS($sen)]
@@ -536,7 +545,7 @@ proc parse_cmd_radio { } {
 		}
 	}
 
-	parse_check_empty
+	parse_empty
 
 	oss_issuecommand 0x02 [oss_setvalues [list $ofd $win $opt] "radio"]
 }
@@ -544,7 +553,7 @@ proc parse_cmd_radio { } {
 proc parse_cmd_status { } {
 
 	# no arguments
-	parse_check_empty
+	parse_empty
 
 	# the argument is ignored
 	oss_issuecommand 0x03 [oss_setvalues [list 3] "status"]
@@ -589,21 +598,19 @@ proc parse_cmd_on_off { opt } {
 
 	}
 
-	parse_check_empty
+	parse_empty
 
 	oss_issuecommand 0x04 [oss_setvalues [list $opt] "onoff"]
 }
 
-proc parse_cmd_sample { } {
+proc parse_cmd_ss { ord } {
 #
-# Start sampling
+# Start sampling or streaming
 #
 	set frq 0
 	set cnt 1
 
-	set klist { "frequency" "count" }
-	# current time
-	set ctime [clock seconds]
+	set klist { "frequency" }
 
 	while 1 {
 
@@ -625,39 +632,30 @@ proc parse_cmd_sample { } {
 			set frq [parse_value "-frequency" 1 256]
 			continue
 		}
-
-		if { $k == "count" } {
-			set cnt [oss_parse -skip -number -return 1]
-			if { $cnt == "" } {
-				# try infinite
-				set cnt [string tolower [oss_parse \
-					-match {^[[:alpha:]]+} -return 0]]
-				if { $cnt == "" || [string first $cnt \
-					"infinite"] != 0 } {
-					error "illegal -count, must be a\
-						number or \"infinite\""
-				}
-				set cnt [expr 0x0ffffffff]
-			} elseif { $cnt < 0 } {
-				error "-count cannot be negative"
-			}
-
-			continue
-		}
 	}
 
-	parse_check_empty
+	parse_empty
 
-	oss_issuecommand 0x05 [oss_setvalues [list $ctime $cnt $frq] \
+	oss_issuecommand $ord [oss_setvalues [list $ctime $cnt $frq] \
 		"sample"]
+}
+
+proc parse_cmd_sample { } {
+
+	parse_cmd_ss 0x05
+}
+
+proc parse_cmd_stream { } {
+
+	parse_cmd_ss 0x06
 }
 
 proc parse_cmd_stop { } {
 
 	# no arguments
-	parse_check_empty
+	parse_empty
 
-	oss_issuecommand 0x06 [oss_setvalues [list 0] "stop"]
+	oss_issuecommand 0x07 [oss_setvalues [list 0] "stop"]
 }
 
 proc parse_cmd_ap { } {
@@ -701,9 +699,9 @@ proc parse_cmd_ap { } {
 		set norp [parse_value "retries" 0 7]
 	}
 
-	parse_check_empty
+	parse_empty
 
-	oss_issuecommand 0x80 \
+	oss_issuecommand 0x08 \
 		[oss_setvalues [list $nodeid $worprl $worp $norp] "ap"]
 }
 
@@ -724,6 +722,13 @@ proc show_msg { code ref msg } {
 		}
 		return
 	}
+
+	if { $code == 128 } {
+		show_sblock $ref $msg
+		return
+	}
+
+	# a standard message
 
 	set str [oss_getmsgstruct $code name]
 
@@ -781,22 +786,6 @@ proc sset_to_string { ss } {
 	return $rs
 }
 
-proc coll_stat { lft rat } {
-
-	if { $lft == 0 } {
-		return "NO"
-	}
-
-	if { $lft == 0x0ffffffff } {
-		set rs "FOREVER"
-	} else {
-		set rs "$lft samples left"
-	}
-
-	return "$rs \[rate: $rat\]"
-
-}
-
 proc read_nibbles { blb } {
 
 	# initialize: at even nibble
@@ -852,16 +841,24 @@ proc show_msg_status { msg } {
 	variable CPARAMS
 	variable COMPS
 
-	lassign [oss_getvalues $msg "status"] upt sec lft bat frm mim rat sns \
+	lassign [oss_getvalues $msg "status"] upt tak bat frm mim rat sns sta \
 		spa
+
+	if { $sta == 0 } {
+		set sta "IDLE"
+	} elseif { $sta == 1 } {
+		set sta "SAMPLING"
+	} else {
+		set sta "STREAMING"
+	}
 
 	set res "Node status ([get_rss $msg]):\n"
 	append res "  Uptime:      [sectoh $upt]\n"
-	append res "  Time:        [clock format $sec]\n"
 	append res "  Battery:     [sensor_to_voltage $bat]\n"
 	append res "  Memory:      F: $frm M: $mim\n"
+	append res "  Status:      $sta\n"
 	append res "  Active:      [sensor_names $sns]\n"
-	append res "  Collecting:  R: $rat L: $lft\n"
+	append res "  Taken:       $tak @ $rat\n"
 
 	# Now go through sensor configs, the length is in fact static, but we
 	# use a blob for that
@@ -1007,17 +1004,23 @@ proc get_u32 { bb } {
 	return [expr { ($d << 24) | ($c << 16) | ($b << 8) | $a }]
 }
 
-proc get_f16 { bb } {
-
-	upvar $bb data
-
-	set w [get_u16 data]
-
+proc to_f16 { w } {
+#
+# 16-bit to float
+#
 	if [expr { $w & 0x8000 }] {
 		set w [expr { -65536 + $w }]
 	}
 
 	return [format %7.4f [expr { $w / 32768.0 }]]
+}
+
+
+proc get_f16 { bb } {
+
+	upvar $bb data
+
+	return [to_f16 [get_u16 data]]
 }
 
 proc get_t16 { bb } {
@@ -1112,14 +1115,10 @@ proc show_report_imu { d cmp } {
 	set res " IMU:"
 
 	if [expr { $cmp & 0x10 }] {
-		# this indicates a motion event whose format is three
+		# this indicates a motion event whose format is simple
 		# coordinates + count
-		set x [get_f16 data]
-		set y [get_f16 data]
-		set z [get_f16 data]
 		set c [get_n16 data]
-		append res " \[M $x $y $x $c\]"
-		# no need to look at the remaining bits
+		append res " \[M $c\]"
 		return $res
 	}
 
@@ -1153,6 +1152,15 @@ proc show_report_imu { d cmp } {
 	}
 
 	return $res
+}
+
+proc show_msg_motion { msg } {
+
+	lassign [oss_getvalues $msg "motion"] evt acc
+	lassign $acc x y z
+
+	return "Motion: ([format %5u $evt])\
+		 \[A [to_f16 $x] [to_f16 $y] [to_f16 $z]\]\n"
 }
 
 proc show_report_humid { d cmp } {
@@ -1234,8 +1242,35 @@ proc show_msg_ap { msg } {
 
 proc start_up { } {
 #
-# Send a dummy ap message to initialize reference counter
+# Send a dummy ap message to initialize the reference counter
 #
 	# oss_dump -incoming -outgoing
-	oss_issuecommand 0x80 [oss_setvalues [list 0 0 0 0] "ap"]
+	oss_issuecommand 0x08 [oss_setvalues [list 0 0 0 0] "ap"]
+}
+
+###############################################################################
+# An add on for showing streaming accel data
+###############################################################################
+
+proc show_sblock { ref dat } {
+
+	set dat [lindex [oss_getvalues $dat "sblock"] 0]
+
+	set bn $ref
+
+	set sh 8
+	set fm ""
+	for { set i 0 } { $i < 12 } { incr i } {
+		set ci [lindex $dat $i]
+		# turn them into 16-bit floats
+		append fm [to_f16 [expr { ($ci >> 16) & 0xffc0 }]]
+		append fm [to_f16 [expr { ($ci >>  6) & 0xffc0 }]]
+		append fm [to_f16 [expr { ($ci <<  4) & 0xffc0 }]]
+		append fm "\n"
+		set b [expr {  $ci        & 0x0003 }]
+		set bn [expr { $bn |   ($b << $sh) }]
+		incr sh 2
+	}
+
+	return "B: [format %10u $bn]\n$fm"
 }

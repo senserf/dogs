@@ -8,7 +8,7 @@
 */
 #include "osscmn.h"
 
-static cc1350_rfparams_t RFP = {
+cc1350_rfparams_t RFP = {
 	WOR_CYCLE,
 	RADIO_LINGER,
 	WOR_RSS,
@@ -17,7 +17,7 @@ static cc1350_rfparams_t RFP = {
 
 sint 	RFC;
 
-byte	RadioOn;
+byte	RadioOn, LastRef;
 
 fsm radio_receiver {
 
@@ -75,20 +75,14 @@ void osscmn_turn_radio (byte on) {
 		RadioOn = on;
 		if (RadioOn > 1) {
 			// Full on
-			tcv_control (RFC, PHYSOPT_RXON, NULL);
+			osscmn_rfcontrol (PHYSOPT_RXON, NULL);
 			return;
 		}
 
 		par = RadioOn;
-		tcv_control (RFC, PHYSOPT_OFF, &par);
+		osscmn_rfcontrol (PHYSOPT_OFF, &par);
 	}
 }
-
-void osscmn_setid (word sid) {
-//
-// Set the node (network) Id
-//
-	
 
 void osscmn_init () {
 //
@@ -103,11 +97,41 @@ void osscmn_init () {
 
 	// In this app, the role of NETID is played by the host Id
 	sid = NODE_ID;
-	tcv_control (RFC, PHYSOPT_SETSID, &sid);
-
-	tcv_control (RFC, PHYSOPT_SETPARAMS, (address)&RFP);
+	osscmn_rfcontrol (PHYSOPT_SETSID, &sid);
+	osscmn_rfcontrol (PHYSOPT_SETPARAMS, (address)&RFP);
 
 	runfsm radio_receiver;
 
 	osscmn_turn_radio (RADIO_MODE_ON);
 }
+
+void osscmn_rfcontrol (sint op, address pmt) {
+//
+// Issue sysopt to RF (account for VUEE)
+//
+#ifdef __SMURPH__
+	if (op == PHYSOPT_SETPARAMS) {
+#if RADIO_WOR_MODE
+		emul (1, "RF SETPARAMS: off=%1u, int=%1u, rss=%1u, pqt=%1u",
+			((cc1350_rfparams_t*)pmt)->offdelay,
+			((cc1350_rfparams_t*)pmt)->interval,
+			((cc1350_rfparams_t*)pmt)->rss,
+			((cc1350_rfparams_t*)pmt)->pqt);
+#else
+		emul (1, "RF SETPARAMS: off=%1u",
+			((cc1350_rfparams_t*)pmt)->offdelay);
+#endif
+		return;
+	}
+	if (op == PHYSOPT_OFF) {
+		if (pmt != NULL && pmt) {
+			// WOR request, make it simply ON
+			tcv_control (RFC, PHYSOPT_RXON, NULL);
+			emul (1, "RF WOR MODE");
+			return;
+		}
+		// Fall through for OFF
+	}
+#endif
+	tcv_control (RFC, op, pmt);
+};

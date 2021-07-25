@@ -31,7 +31,7 @@
 #define	message_blast_code	129
 
 void ossint_toggle_radio ();
-void ossint_set_radio (const command_radio_t*, word);
+word ossint_set_radio (const command_radio_t*, word);
 void ossint_motion_event (address, word);
 
 fsm ossint_sensor_status_sender;

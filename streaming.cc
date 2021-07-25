@@ -6,6 +6,8 @@
 	This file is part of the PICOS platform
 
 */
+#include "tag.h"
+#include "sampling.h"
 #include "streaming.h"
 
 //
@@ -106,17 +108,13 @@ static void fill_eot (address pkt) {
 	pay -> last = LastSent;
 
 	pay -> offset = (BHead -> bn) > LastSent ? 0 :
-		(word) LastSent - BHead -> bn;
-
-	// Note that offset == 0 means 1 block (offset is the difference
-	// between LastSent and BHead->bn)
-
+		(word) LastSent - BHead -> bn + 1;
+	// Note that offset == 0 means no blocks can be retransmitted (LastSent
+	// is below the head), 1 means head == LastSent
 #undef pay
 }
 
 fsm streaming_trainsender {
-
-	word NCars;
 
 	state ST_NEWTRAIN:
 
@@ -216,70 +214,6 @@ void streaming_tack (byte ref, byte *ab, word len) {
 	lword	nts;
 	sint	mp;
 
-	void next_to_stay () {
-
-		do {
-			if (mp) {
-				// Doing the bit map
-				if (mp == 7) {
-					mp == 0;
-				} else {
-	try_map:
-					nts++;
-					if (*ab & (1 << mp++))
-						return;
-				}
-				continue;
-			}
-			if (len == 0) {
-				// No more blocks
-	force_end:
-				nts = MAX_LWORD;
-				return;
-			}
-			if (*ab & 0x80) {
-				// New bit map
-				len--;
-				mp = 0;
-				goto try_map;
-			}
-			if (*ab & 0x40) {
-				if (len < 2) {
-					// This won't happen
-					len = 0;
-					goto force_end;
-				}
-				// Long offset
-				nts = LastSent - (((word)(*ab) && 0x3f) << 8) -
-					*(ab+1);
-				len -= 2;
-				return;
-			}
-			nts = LastSent - *ab;
-			return;
-
-		} while (1);
-	};
-				
-	sint must_stay () {
-
-		while (cb->bn > nts) {
-			// When we hit a block larger than next block from the
-			// ACK, the ACK block must be skipped, because it means
-			// that the requested block is not available any more
-			next_to_stay ();
-		}
-
-		if (cb->bn == nts)
-			// The block must stay
-			return 1;
-
-		// We have a block in front of the next to stay from the ACK;
-		// this also covers the case when the ACK has ended (which will
-		// cause nts to be set to MAX
-		return 0;
-	};
-
 	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain)
 		// Just ignore
 		return;
@@ -288,15 +222,68 @@ void streaming_tack (byte ref, byte *ab, word len) {
 	pv = NULL;		// Previous
 	mp = 0;
 
-	nts = 0;
-	next_to_stay ();
+	// This is the starting setting of the block number reference; this
+	// cannot be a legit block to retain because it has not be indicated
+	// in the ACK, so we subtract one from the minimum legit number
+	nts = LastSent - STRM_MAX_OFFSET - 1;
 
 	BTail = NULL;
 	while (cb != NULL) {
 		// Check if this block should stay
-		if (must_stay () {
-			// This will end up being set to the last non-deleted
-			// block
+		// if (must_stay ()) ...
+		while (cb->bn > nts) {
+			// When we hit a block larger than next block from the
+			// ACK, the ACK block must be skipped, because it means
+			// that the requested block is not available any more
+			// next_to_stay () ...
+			do {
+				if (mp) {
+					// Doing the bit map
+					if (mp == 7) {
+						// Done
+						mp = 0;
+					} else {
+try_map:
+						nts++;
+						if (*ab & (1 << mp++))
+							// return next_to_stay
+							break;
+					}
+					continue;
+				}
+				if (len == 0) {
+					// No more blocks
+force_end:
+					// Skip all blocks to the end
+					nts = MAX_LWORD;
+					break;
+				}
+				if (*ab & 0x80) {
+					// A new bit map; a zero map is a NOP
+					// advancing nts by 7
+					len--;
+					mp = 0;
+					goto try_map;
+				}
+				if (*ab & 0x40) {
+					// Long offset
+					if (len < 2) {
+						// This won't happen
+						len = 0;
+						goto force_end;
+					}
+					nts += ack_off_l (ab);
+					len -= 2;
+					break;
+				}
+				nts += ack_off_s (ab);
+				len--;
+				break;
+			} while (1);
+		}
+
+		if (cb->bn == nts) {
+			// The block must stay
 			BTail = cb;
 			cb = (pv = cb) -> next;
 		} else {

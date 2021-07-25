@@ -12,6 +12,7 @@
 //+++ sensing.cc
 
 #include "sysio.h"
+
 #include "mpu9250.h"
 #include "obmicrophone.h"
 #include "bmp280.h"
@@ -21,6 +22,7 @@
 #define	NUMBER_OF_SENSORS	5
 
 // System identifiers
+#define	SENSOR_BATTERY		(-1)
 #define	SENSOR_MPU9250		1
 #define	SENSOR_OBMICROPHONE	2
 #define	SENSOR_BMP280		3
@@ -30,7 +32,7 @@
 #define	SENSOR_BATTERY		(-1)
 
 // Logical indexes for the application
-// ... and why exectly can't we use system identifiers? OK, who cares!
+// ... and why exactly can't we use system identifiers? OK, who cares!
 #define	MPU9250_INDEX		0
 #define HDC1000_INDEX		1
 #define OBMICROPHONE_INDEX	2
@@ -119,6 +121,7 @@ typedef struct {
 
 #define	bmp280_active		(Sensors & BMP280_FLAG)
 #define	bmp280_data_size	(bmp280_active ? (bmp280_desc.components == \
+				 3 ? 8 : 4) : 0)
 
 extern byte Sensors;
 extern mpu9250_desc_t mpu9250_desc;
@@ -128,6 +131,32 @@ word sensing_configure (const byte*, sint);
 word sensing_status (byte*);
 word sensing_report (byte*, address);
 
-#define	sensing_all_off ()	sensing_turn (0x00)
+#define	sensing_all_off()	sensing_turn (0x00)
+
+#ifdef __SMURPH__
+
+// ============================================================================
+// VUEE
+// ============================================================================
+
+void read_mpu9250 (word, address);
+void read_hdc1000 (word, address);
+void read_opt3001 (word, address);
+void read_bmp280 (word, address);
+void read_obmicrophone (word, address);
+
+#else
+
+// ============================================================================
+// THE REAL WORLD
+// ============================================================================
+
+#define read_mpu9250(s,p)	read_sensor (s, SENSOR_MPU9250, p)
+#define read_hdc1000(s,p)	read_sensor (s, SENSOR_HDC1000, p)
+#define read_opt3001(s,p)	read_sensor (s, SENSOR_OPT3001, p)
+#define read_bmp280(s,p)	read_sensor (s, SENSOR_BMP280, p)
+#define read_obmicrophone(s,p)	read_sensor (s, SENSOR_OBMICROPHONE, p)
+
+#endif
 
 #endif

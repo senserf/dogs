@@ -1,7 +1,7 @@
 #ifndef __pg_tag_h
 #define	__pg_tag_h
 
-#include "stdio.h"
+#include "sysio.h"
 
 #define	ACTIVATING_BUTTON	0		// Hibernate, radio control
 #define	HIBERNATE_ON_PUSH	5		// Seconds to hold the button

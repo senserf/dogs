@@ -9,6 +9,8 @@
 #ifndef	__pg_streaming_h
 #define	__pg_streaming_h
 
+//+++ "streaming.cc"
+
 #include "ossint.h"
 #include "sensing.h"
 #include "sampling.h"

@@ -13,5 +13,6 @@
 
 void led_blink (word, word, word);
 void led_init (sint);
+void led_stop ();
 
 #endif

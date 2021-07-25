@@ -14,29 +14,23 @@
 #include "phys_cc1350.h"
 #include "plug_null.h"
 #include "rf.h"
-
-static cc1350_rfparams_t RFP = {
-	WOR_CYCLE,
-	RADIO_LINGER,
-	WOR_RSS,
-	WOR_PQI
-};
+#include "sensing.h"
+#include "sampling.h"
+#include "ledblink.h"
 
 void ossint_motion_event (address values, word events) {
 
 	address msg;
-	message_report_t *pmt;
+	message_motion_t *pmt;
 
-	if ((msg = osscmn_xpkt (message_report_code, LastRef,
-				sizeof (message_report_t) + 8)) != NULL) {
+	if ((msg = osscmn_xpkt (message_motion_code, LastRef,
+				sizeof (message_motion_t))) != NULL) {
 
-		pmt = (message_report_t*) osspar (msg);
-		pmt->layout = 0x10;
-		pmt->data.size = 8;
-		((word*)(pmt->data.content)) [0] = values [0];
-		((word*)(pmt->data.content)) [1] = values [1];
-		((word*)(pmt->data.content)) [2] = values [2];
-		((word*)(pmt->data.content)) [3] = events;
+		pmt = (message_motion_t*) osspar (msg);
+		pmt->accel [0] = values [0];
+		pmt->accel [1] = values [1];
+		pmt->accel [2] = values [2];
+		pmt->events = events;
 		tcv_endpx (msg, YES);
 	}
 }
@@ -79,8 +73,8 @@ fsm ossint_sensor_status_sender {
 		pmt->battery = batt;
 		pmt->freemem = memfree (0, &(pmt->minmem));
 		pmt->rate = SamplesPerMinute;
-		pmt->sset = Sensors;
 		pmt->status = Status;
+		pmt->sset = Sensors;
 
 		pmt->sstat.size = sensing_status (
 			(byte*)(((word*)&(pmt->sstat.size)) + 1));
@@ -98,10 +92,10 @@ void ossint_toggle_radio () {
 
 	osscmn_turn_radio (what);
 
-	led_blink (LED_MAIN, 2 + 2 * what, 128);
+	led_blink (0, 2 + 2 * what, 128);
 }
 
-void ossint_set_radio (const command_radio_t *pmt, word pml) {
+word ossint_set_radio (const command_radio_t *pmt, word pml) {
 
 	word val;
 	byte mod, ope;

@@ -10,10 +10,10 @@
 #include "phys_cc1350.h"
 #include "phys_uart.h"
 #include "plug_null.h"
+#include "cc1350.h"
 
 #include "osscmn.h"
-
-#include "cc1350.h"
+#include "pegstream.h"
 
 // UART packet length as a function of the payload length (2 bytes for CRC)
 #define	upl(a)		((a) + 2)
@@ -26,37 +26,28 @@
 static sint		sd_uart;
 
 static oss_hdr_t	*CMD;		// Current command ...
-static address		PMT;		// ... - the header
+static address		PMT;		// ... and its payload
 static word		PML;		// Length
-static byte		LastRef = 0;
 
 static command_ap_t	APS = { 1, 1024, 0, 2 };		// AP status
-
-// The AP never goes into WOR, so we basically need the second entry only
-static cc1350_rfparams_t	RFP = { 4096, 1024, 20, 1 };
 
 // ============================================================================
 
 static void led_hb () {
 	// Two quick blinks on heartbeat
-	blink (0, 2, 256);
+	led_blink (0, 2, 256);
 }
 
 static void led_tt () {
 	// One longish blink on outgoing message
-	blink (0, 1, 768);
-}
-
-static void led_ft () {
-	// One quick blink on incoming message
-	blink (1, 1, 512);
+	led_blink (0, 1, 768);
 }
 
 // ============================================================================
 
 static void oss_ack (word status) {
 //
-// ACK to the interface
+// ACK to the OSS
 //
 	address msg;
 
@@ -71,7 +62,7 @@ static void oss_ack (word status) {
 
 static void handle_oss_command () {
 //
-// Process a command arriving from the interface
+// Process a command arriving from the OSS
 //
 	address msg;
 	word i;
@@ -81,12 +72,11 @@ static void handle_oss_command () {
 	if (CMD->code == 0) {
 		// Heartbeat/autoconnect
 		if (*((lword*)PMT) == OSS_PRAXIS_ID && (msg = 
-		    tcv_wnp (WNONE, sd_uart,
+	    	  tcv_wnp (WNONE, sd_uart,
 		    upl (sizeof (oss_hdr_t) + sizeof (word)))) != NULL) {
 			// Heartbeat response		
 			msg [0] = 0;
-			*(msg + 1) = (word)(OSS_PRAXIS_ID ^ 
-				(OSS_PRAXIS_ID >> 16));
+			msg [1] = (word)(OSS_PRAXIS_ID ^ (OSS_PRAXIS_ID >> 16));
 			tcv_endp (msg);
 			led_hb ();
 		}
@@ -108,15 +98,18 @@ static void handle_oss_command () {
 #define	pmt	((command_ap_t*)PMT)
 		done = 0;
 		if (pmt->nodeid != WNONE) {
-			if (pmt->nodeid != 0)
-				// Request to set NodeId
+			if (pmt->nodeid != 0) {
+				// Request to set group Id
 				APS.nodeid = pmt->nodeid;
+				osscmn_rfcontrol (PHYSOPT_SETSID,
+					&(APS.nodeid));
+			}
 			done++;
 		}
 		if (pmt->worprl != WNONE) {
 			if (RFP.interval != (APS.worprl = pmt->worprl)) {
 				RFP.interval = pmt->worprl;
-				tcv_control (RFC, PHYSOPT_SETPARAMS,
+				osscmn_rfcontrol (PHYSOPT_SETPARAMS,
 					(address)&RFP);
 			}
 			done++;
@@ -135,7 +128,7 @@ static void handle_oss_command () {
 		} else {
 			// Report the parameters
 			if ((msg = tcv_wnp (WNONE, sd_uart,
-			    upl (sizeof (oss_hdr_t) + sizeof (message_ap_t))))
+		    	  upl (sizeof (oss_hdr_t) + sizeof (message_ap_t))))
 			    == NULL)
 				return;
 			LastRef = CMD->ref;
@@ -158,108 +151,62 @@ static void handle_oss_command () {
 
 	// To be passed to the node
 
+#ifndef	__SMURPH__
+	// No WOR in VUEE
 	for (i = 0; i < APS.nworp; i++) {
 		// This is executed if WOR wakeup is set, nworp times
 		if ((msg = tcv_wnpu (WNONE, RFC,
 		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
 			return;
-		msg [1] = APS.nodeid;
 		memcpy (msg + (RFPHDOFF/2), CMD, PML + sizeof (oss_hdr_t));
-		tcv_endp (msg);
+		tcv_endpx (msg, NO);
 	}
-
+#endif
 	i = 0;
 	led_tt ();
 	do {
+#ifndef	__SMURPH__
 		if (APS.norp == 0 && APS.nworp != 0)
 			// WOR wakeup has been sent, and we don't want to
 			// force regular packets on top of it
 			return;
+#endif
 		// At least once if APS.nworp == 0, ragrdless of the setting of
 		// norp
 		if ((msg = tcv_wnp (WNONE, RFC,
 		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
 			return;
-		msg [1] = APS.nodeid;
 		memcpy (msg + (RFPHDOFF/2), CMD, PML + sizeof (oss_hdr_t));
-		tcv_endp (msg);
+		tcv_endpx (msg, YES);
 		i++;
 	} while (i < APS.norp);
 }
-
-fsm receiver {
-
-	address pkt, msg;
-
-	state RCV_WAIT:
-
-		word len;
-
-		pkt = tcv_rnp (RCV_WAIT, RFC);
-		len = tcv_left (pkt);
-
-		if (len >= RFPFRAME + sizeof (oss_hdr_t) + 2 &&
-		  len <= OSS_PACKET_LENGTH + RFPFRAME &&
-		    pkt [1] == APS.nodeid) {
-			// Write to the UART; include RSS and LQI
-			len -= RFPHDOFF;
-			if ((msg = tcv_wnp (WNONE, sd_uart, upl (len)))
-			    != NULL) {
-				memcpy (msg, pkt + (RFPHDOFF/2), len);
-				tcv_endp (msg);
-				led_ft ();
-			}
-		}
-
-		tcv_endp (pkt);
-		proceed RCV_WAIT;
-}
-
-
-
-
-
-
-
-
-
-
-
 
 void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 //
 // Just pass it to the OSS
 //
-	if (code & 0x80) {
+	address msg;
 
-		switch (code) {
+	if (code == MESSAGE_CODE_SBLOCK) {
+		if (mpl != STRM_NCODES * 4)
+			// Ignore garbage
+			return;
+		pegstream_tally_block (ref, pkt);
+	} else if (code == MESSAGE_CODE_ETRAIN) {
+		if (mpl == sizeof (streot_t))
+			pegstream_eot (ref, pkt);
+		// Do not pass to OSS
+		return;
+	}
 
-			case MESSAGE_CODE_SBLOCK:
+	// Pass to OSS
 
-				if (mpl == STRM_NCODES * 4)
-					// The length is fixed and known
-					process_streaming_block (ref, pkt);
-
-				return;
-
-			case MESSAGE_CODE_ETRAIN:
-
-				if (mpl == sizeof (streot_t))
-					process_streaming_eot (ref, pkt);
-				return;
-		}
-
-		// Ignore garbage
-	} else {
-
-		address msg;
-
-		if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2)) != NULL) {
-			((byte*)msg) [0] = code;
-			((byte*)msg) [1] = ref;
-			memcpy (msg + (RFPHDOFF/2), pkt, mpl);
-			tcv_endp (msg);
-		}
+	if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2)) != NULL) {
+		((byte*)msg) [0] = code;
+		((byte*)msg) [1] = ref;
+		memcpy (msg + (RFPHDOFF/2), pkt, mpl);
+		tcv_endp (msg);
 	}
 }
 				
