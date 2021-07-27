@@ -80,7 +80,6 @@ typedef struct {
 typedef struct {
 	lword	uptime;
 	lword	taken;
-	lword	left;
 	word	battery;
 	word	freemem;
 	word	minmem;

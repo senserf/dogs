@@ -9,43 +9,75 @@
 #include "pegstream.h"
 
 static byte bmap [STRM_MAP_SIZE];
-static lword lsent, bbase, borig, lrcvd;
+static lword lsent, bbase, lrcvd;
 
 static byte ackb [STRM_MAX_ACKPAY];
 static sint abeg, aend, acnt, aibm;
 static lword alst;
 
-#define	bme(bo)	bmap [ (((bo) - bbase + borig) & STRM_MAP_MASK) ]
-#define	incr_aend() do { if (++aend == STRM_MAX_ACKPAY) aend = 0; } while (0)
+// The bitmap holds at least STRM_MAX_OFFSET block status bits counting
+// from bbase; bo is assumed to be divided by 8 (representing an aligned
+// 8-tuple)
+#define	bme(bo)	bmap [(bo) & STRM_MAP_MASK]
 
 static void trim_bitmap (lword bo) {
 //
 // Adjust the bitmap to accommodate the most recent block number (/8)
 //
-	lword bh, ne;
+	lword ne;
+	word pi, ci;
 
+	// Both bo and bbase are 8-tuple indexes
 	if (bo - bbase >= STRM_MAP_SIZE) {
-		// The new block number doesn't fit; ne = the number of entries
-		// to remove from the map (skip)
-		if ((ne = bo - bbase - STRM_MAP_SIZE + 1) >= STRM_MAP_SIZE) {
-			// Bypassing the entire map
-			borig = 0;
+		// The base must be shifted, ne == by how much
+		ne = bo - bbase - STRM_MAP_SIZE + 1;
+		if (ne >= STRM_MAP_SIZE) {
+			// By more than the map length, so we invalidate the
+			// entire content
 			bzero (bmap, STRM_MAP_SIZE);
+			// Can start straight from here
 			bbase = bo;
 			return;
 		}
-		if ((bh = borig + ne) >= STRM_MAP_SIZE) {
-			// Wrapping around
-			bh &= STRM_MAP_MASK;
-			bzero (bmap + borig, STRM_MAP_SIZE - borig);
-			bzero (bmap, bh);
+
+		// Previous base index
+		pi = bbase & STRM_MAP_MASK;
+		ci = (bbase += ne) & STRM_MAP_MASK;
+
+		// Need to zero out the reclaimed area between pi and ci - 1
+		if (pi < ci) {
+			bzero (bmap + pi, ci - pi);
 		} else {
-			// A single chunk
-			bzero (bmap + borig, ne);
+			bzero (bmap + pi, STRM_MAP_SIZE - pi);
+			bzero (bmap, ci);
 		}
-		borig = bh;
-		bbase += ne;
 	}
+}
+
+static inline void add_missing (lword from, lword upto) {
+//
+// Add blocks from to upto (inclusively) to the map as missing
+//
+	lword bo;
+	sint bb;
+
+	bo = from >> 3;
+	bb = from & 0x7;
+	trim_bitmap (bo);
+
+	do {
+		bme (bo) |= (1 << bb);
+		if (from == upto)
+			break;
+		from++;
+		if (bb == 7) {
+			bo++;
+			bb = 0;
+			trim_bitmap (bo);
+		} else {
+			bb++;
+		}
+	} while (1);
 }
 
 static inline void init_ack () {
@@ -59,7 +91,7 @@ static inline void close_ack () {
 
 	if (aibm >= 0) {
 		// Close the open map
-		incr_aend ();
+		incm (aend, STRM_MAX_ACKPAY);
 		aibm = -1;
 	}
 }
@@ -71,20 +103,30 @@ static void incr_ack () {
 	sint sabg, sbbg, skip;
 	word r, b, i;
 	byte CB;
-
-#define	incr_abeg()	do { sabg = sbbg; sbbg = abeg; CB = ackb [abeg]; \
-			     if (++abeg == STRM_MAX_ACKPAY) abeg = 0; \
-			     skip++; } while (0)
+//
+// Tried to have it as a nested function, doesn't work in C++, pity:
+//	-- strore tha last two skipped indexes in sabg/sbbg
+//	-- set CB to current entry
+//	-- skip current entry
+//	-- keep track how many skipped since start
+//
+#define	incr_abeg()	do { sabg = sbbg; CB = ackb [sbbg = abeg]; \
+			     incm (abeg, STRM_MAX_ACKPAY); skip++; } while (0)
 
 	if (acnt < STRM_MAX_ACKPAY)
-		// Statistically, this is what will happen
+		// Statistically, this is what will happen, we are within
+		// limits
 		return;
 
-	skip = 0;
+	// r is the running base (for offsets)
 	r = 0;
 
-	// Skip the first byte which we must skip
-	incr_abeg ();
+	// Skip the first byte which we must skip, no matter what; the first
+	// case of incr_abeg is a bit simpler than the rest
+	// incr_abeg ();
+	CB = ackb [sbbg = abeg];
+	incm (abeg, STRM_MAX_ACKPAY);
+	skip = 1;
 
 	if (CB & 0x80) {
 		// Starts with a bitmap: delete, update offset
@@ -92,8 +134,8 @@ static void incr_ack () {
 		// Note that this offset, as such, is wrong, because the
 		// block at it need not be deleted, but it will work as an
 		// offset to any subsequent offset; so we just accumulate
-		// the offset at this stage; whatever will be replaced is
-		// the NEXT item
+		// the offset at this stage; whatever will be actually replaced
+		// (inserted) is the NEXT item
 	} else {
 		if (CB & 0x40) {
 			// A long offset
@@ -106,16 +148,19 @@ static void incr_ack () {
 	}
 
 	// After this, skip == 1 or skip == 2; we still need more, even when
-	// skip == 2, it just means that we have skipped a long offset
+	// skip == 2, it just means that we have skipped a long offset which
+	// may have only gotten longer
 
 	while (1) {
 
-		// We may need to repeat this
+		// Not really a loop, but may have to repeat
 
 		incr_abeg ();
 
 		if (CB & 0x80) {
-			// A bit map: find the max bit set
+			// A bit map: find the max bit set; at least one must
+			// be at this stage; the only possible case of a NOP
+			// is the last (final) even byte of the packet
 			for (i = b = 0; i < 7; i++)
 				if (ackb [abeg] & (1 << i))
 					b = i;
@@ -128,7 +173,7 @@ SOff:
 				acnt -= skip - 1;
 				return;
 			} else if (skip > 2) {
-				// A long offset can be used
+				// We can afford a long offset
 				r += b;
 LOff:
 				ackb [abeg = sabg] = 0x40 | ((r >> 8) & 0x3f);
@@ -163,15 +208,14 @@ static void add_ack (lword bn) {
 	lword d;
 
 	if (bn <= alst || bn > lsent)
+		// Must be increasing and up to lsent (L)
 		return;
 
-	// aend shows where to write next
-
 	if (aibm >= 0) {
-		// Within the bit map, aibm is the last-set bit, alst is the
-		// last set bn, aend points to the map
+		// A bitmap is open, aibm points to the next bit, aend stays
+		// put at the bitmap byte, alst is the last set bn
 		if (bn - alst < 7 - aibm) {
-			// Add to the bit map
+			// Falls within the current map
 			aibm += (bn - alst);
 			ackb [aend] |= (1 << aibm);
 			alst = bn;
@@ -180,18 +224,19 @@ static void add_ack (lword bn) {
 			// Close the map
 			alst += 6 - aibm;
 			aibm = -1;
-			incr_aend ();
+			incm (aend, STRM_MAX_ACKPAY);
 		}
 	}
 
-	// Need room; call this when you are about to write something into a
-	// new byte
+	// Make sure got at least one spare byte
 	incr_ack ();
 
 	if ((d = bn - alst - 1) <= 5) {
-		// Use a bit map, if it stands a chance to be better than
-		// offset
-		aibm = d;
+		// A bit map costs the same mempry as a short offset, but
+		// offsets are easier to handle. Use bit map, if there's a
+		// chance (at this point) that it will cover more than one
+		// block
+		aibm = (sint) d;
 		ackb [aend] = 0x80 | (1 << aibm);
 		alst = bn;
 		acnt++;
@@ -203,37 +248,34 @@ static void add_ack (lword bn) {
 		incr_ack ();
 		ackb [aend] = 0x40 | ((d >> 8) & 0x3f);
 		acnt++;
-		incr_aend ();
+		incm (aend, STRM_MAX_ACKPAY);
 	}
 
 	ackb [aend] = (byte) d;
 	acnt++;
-	incr_aend ();
+	incm (aend, STRM_MAX_ACKPAY);
 	alst = bn;
 }
 		
 void pegstream_init () {
 
 	bzero (bmap, STRM_MAP_SIZE);
-	borig = 0;
 	bbase = lsent = 0;
 	lrcvd = lsent - 1;
 }
 
 void pegstream_tally_block (byte ref, address pkt) {
-
-	// Extract the block number, this is the only thing we care about
+//
+// Update the bit map
+//
 	lword bn, bo;
 	sint bb;
 
 	for (bn = ref, bb = 0; bb < STRM_NCODES; bb++)
 		bn |= (((lword*)pkt) [bb] & 0x3) << ((bb + bb) + 8);
 
-	// Update the map
-
 	if (bn < lrcvd) {
 		// This is a block from the past, remove it from the map
-		bo = bn >> 3;
 		if ((bo = bn >> 3) < bbase)
 			// Too old
 			return;
@@ -246,33 +288,17 @@ void pegstream_tally_block (byte ref, address pkt) {
 		// This is what we are betting on, nothing to do
 		return;
 
-	// We have a hiccup, nm = the number of missing blocks
-	bo = lrcvd >> 3;
-	bb = lrcvd & 0x7;
-	trim_bitmap (bo);
-
-	do {
-		bme (bo) |= (1 << bb);
-		if (++lrcvd == bn)
-			break;
-		if (bb == 7) {
-			bo++;
-			bb = 0;
-			trim_bitmap (bo);
-		} else {
-			bb++;
-		}
-	} while (1);
+	add_missing (lrcvd, bn - 1);
 }
 
 void pegstream_eot (byte ref, address pkt) {
 //
 // Received EOT
 //
-	lword bo, bn;
+	lword bo, bn, bc;
 	address msg;
-	sint bb, nm;
-	word as, of;
+	sint bb;
+	word of;
 
 	// Last sent
 	lsent = ((streot_t*) pkt) -> last;
@@ -283,54 +309,28 @@ void pegstream_eot (byte ref, address pkt) {
 	if (lsent < lrcvd || of > lsent)
 		return;
 
-	if (lsent > lrcvd) {
-		// Add the missing blocks at the tail
-		nm = (sint) (lsent - lrcvd);
-		bo = lrcvd + 1;
-		bb = bo & 0x7;
-		bo >>= 3;
-		trim_bitmap (bo);
-		do {
-			bme (bo) |= (1 << bb);
-			if (--nm == 0)
-				break;
-			if (bb == 7) {
-				bo++;
-				bb = 0;
-				trim_bitmap (bo);
-			} else {
-				bb++;
-			}
-		} while (1);
-	}
+	if (lsent > lrcvd)
+		add_missing (lrcvd + 1, lsent);
 
 	// Build the ACK packet
 	init_ack ();
 
-	bn = bbase;
-	bo = borig;
-
-	while (bn <= lsent) {
-
-		if (bmap [bo]) {
+	for (bn = bbase, bo = lsent >> 3; bn <= bo; bn++) {
+		// bn indexes 8-tuples, quickly skip zero entries
+		if (bmap [of = bn & STRM_MAP_MASK] != 0) {
+			bc = bn << 3;
 			for (bb = 0; bb < 8; bb++)
-				if (bmap [bo] & (1 << bb))
-					add_ack (bn + bb);
+				if (bmap [of] & (1 << bb))
+					add_ack (bc + bb);
 		}
-
-		bn += 8;
-		if (++bo == STRM_MAP_SIZE)
-			bo = 0;
 	}
 
-	// Copy the ACK to the packet
 	close_ack ();
 
-	if ((as = acnt) & 1)
-		// Make sure the packet payload length is even
-		as++;
-	if ((msg = osscmn_xpkt (MESSAGE_CODE_STRACK, ref, as)) != NULL) {
-		if (abeg >= aend) {
+	// Copy the ACK to the packet; make sure tha packet length is even
+	if ((msg = osscmn_xpkt (MESSAGE_CODE_STRACK, ref, (acnt+1) & ~1)) !=
+	    NULL) {
+		if (abeg <= aend) {
 			// A single chunk
 			memcpy (osspar (msg), ackb + abeg, acnt);
 		} else {
@@ -342,7 +342,7 @@ void pegstream_eot (byte ref, address pkt) {
 	}
 
 	if (acnt & 1)
-		// This is a void dummy map
+		// Add a NOP zero map
 		((byte*)(osspar (msg))) [acnt] = 0x80;
 
 	tcv_endpx (msg, NO);

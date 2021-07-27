@@ -29,7 +29,7 @@ fsm radio_receiver {
 		pkt = tcv_rnp (RS_LOOP, RFC);
 
 		// NETID is the only identifier
-		if (tcv_left (pkt) >= OSSMINPL && pkt [0] == NODE_ID) {
+		if (tcv_left (pkt) >= OSSMINPL) {
 			osh = osshdr (pkt);
 			handle_rf_packet (osh->code, osh->ref, 
 				osspar (pkt), tcv_left (pkt) - OSSFRAME);
@@ -96,7 +96,7 @@ void osscmn_init () {
 	RFC = tcv_open (NONE, 0, 0);
 
 	// In this app, the role of NETID is played by the host Id
-	sid = NODE_ID;
+	sid = GROUP_ID;
 	osscmn_rfcontrol (PHYSOPT_SETSID, &sid);
 	osscmn_rfcontrol (PHYSOPT_SETPARAMS, (address)&RFP);
 

@@ -41,7 +41,7 @@
 // First word past the header
 #define	osspar(p)		(((address)(p)) + (OSSFRAME/2))
 
-#define	NODE_ID			((word)host_id)
+#define	GROUP_ID		((word)(host_id >> 16))
 
 // ============================================================================
 // ACK codes

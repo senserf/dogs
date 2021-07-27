@@ -98,6 +98,7 @@ void sampling_stop () {
 	killall (sampling_corrector);
 	SamplesTaken = SampleStartSecond = 0;
 	SamplesPerMinute = 0;
+	Status = STATUS_IDLE;
 }
 
 word sampling_start (const command_sample_t *pmt, word pml) {

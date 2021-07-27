@@ -191,14 +191,17 @@ fsm mpu9250_sampler {
 	state MP_MOTION:
 
 		word values [3];
+
 		read_mpu9250 (MP_MOTION, values);
 
 		// The number of motion events
 		mpu9250_desc.motion_events ++;
+trace ("SAMP event");
 		ossint_motion_event (values, mpu9250_desc.motion_events);
 
 	initial state MP_LOOP:
 
+trace ("SAMP start");
 		wait_sensor (SENSOR_MPU9250, MP_MOTION);
 		release;
 }
@@ -435,7 +438,7 @@ static void sensor_on_bmp280 () {
 
 static void sensor_off_bmp280 () {
 
-	if (!bmp280_active == 0)
+	if (!bmp280_active)
 		return;
 
 	bmp280_off ();
@@ -463,18 +466,26 @@ static word configure_sensor (byte *opt, sint nopt, const byte *pmt, word pml) {
 	return ACK_OK;
 }
 
-word sensing_configure (const byte *buf, sint lft) {
+word sensing_configure (const command_config_t *cmd, sint lft) {
 //
 // Configure sensors
 //
 	sint len;
 	word sen;
+	const byte *buf;
+
+	if (lft < cmd->confdata.size + 2)
+		return ACK_LENGTH;
+
+	buf = cmd->confdata.content;
+	lft = cmd->confdata.size;
 
 	while (lft) {
 		// Sensor number
 		sen = (*buf >> 4) & 0x0f;
 		// Length of the chunk
 		len = (*buf & 0x0f) + 1;
+trace ("SEN: %1d %1d %1d", sen, len, lft);
 		buf++;
 		lft--;
 		if (len > lft)

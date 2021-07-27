@@ -1,0 +1,76 @@
+<channel bn="-116.0dBm">
+
+	<!--
+		Set BN 3dB below the power level corresponding to RSSI = 50
+		which we shall consider minimum receivable:
+			50 / 2 - 138.0 - 3.0 = -116
+	-->
+	<propagation type="sampled">
+		   2.67m     -30.0dB	0.3dB
+		  13.35m     -53.0dB	0.4dB
+		  53.40m     -65.0dB	0.5dB
+		 133.50m     -95.0dB	0.6dB
+		 267.00m    -120.0dB	0.7dB
+		 534.00m    -175.0dB	0.8dB
+	</propagation>
+	<cutoff>
+		<!-- Set this to 6dB below BN -->
+		-122.0dBm
+	</cutoff>
+	<ber>
+		  	SIR	   BER
+			61.0	0.5E-7
+			56.0	1.0E-6
+			23.0	1.0E-5
+			16.0	1.0E-4
+			 8.0	1.0E-3
+			 5.0    4.0E-1
+	 		 0.0    0.5
+	</ber>
+	<frame>
+		min preamble (aka syncbits) = 16
+			<!-- for CC1100/CC1350, the bit rate refers to
+			     information bits, i.e., there are no symbols
+			     perceptible to the driver -->
+		physical bits per byte      = 8
+			<!-- we use double sync for rates < 200k , and single
+			     sync for 200k, so, if you are pedantic, change
+			     this to 16, if 200k is your favorite rate -->
+		extra framing bits          = 32
+	</frame>
+	<rssi>
+		<!--
+			This is for CC1350 where RSS is supposed to be directly
+			in dBm with a 128 offset -->
+
+		RSS =   0	==>		-128.0 dBm
+		RSS = 128	==>		   0.0 dBm
+		RSS = 255	==>		 127.0 dBm
+
+	</rssi>
+	<!-- This is incorrect -->
+	<power>
+		0	-30.0dBm
+		1	-15.0dBm
+		2	-10.0dBm
+		3	 -5.0dBm
+		4	  0.0dBm
+		5	  5.0dBm
+		6	  7.0dBm
+		7	 10.0dBm
+	</power>
+	<rates boost="yes">
+		<!--
+			Assume that 38400 is our reference. This is the rate
+			we use in Alphanet.
+		-->
+		0	   625		 10dB
+		1	 10000		  2dB
+		2	 38400		  0dB
+		3        50000		 -1dB
+	</rates>
+	<channels number="8">
+		Cross channel separation
+		28dB 54dB 86dB 102dB
+	</channels>
+</channel>

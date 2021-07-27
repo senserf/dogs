@@ -84,7 +84,8 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_config_code:
 
 			// Configure sensors
-			ret = sensing_configure ((const byte*) par, pml);
+			ret = sensing_configure ((const command_config_t*) par,
+				pml);
 			break;
 
 		case command_onoff_code:

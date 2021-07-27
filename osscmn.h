@@ -116,5 +116,6 @@ void osscmn_rfcontrol (sint, address);
 void handle_rf_packet (byte, byte, const address, word);
 
 #define toggle(a)	((a) = 1 - (a))
+#define	incm(a,m)	do { if (++(a) == (m)) (a) = 0; } while (0)
 
 #endif

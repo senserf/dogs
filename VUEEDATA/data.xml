@@ -1,0 +1,21 @@
+<network nodes="2">
+    <grid>0.1m</grid>
+    <tolerance quality="2">1E-4</tolerance>
+    <xi:include href="VUEEDATA/CHANNEL/tabulated.xml"/>
+    <nodes>
+	<node type="peg" hid="0x00010001" default="board">
+	    <uart rate="115200" mode="n">
+		<input source="socket"></input>
+		<output target="socket"></output>
+	    </uart>
+	    <emul><output target="socket"/></emul>
+	</node>
+	<node type="tag" hid="0x00010002" default="board">
+	    <emul><output target="socket"/></emul>
+	</node>
+        <locations>
+	    <location movable="yes"> 10.0 10.0 </location>
+	    <location movable="yes"> 10.0 11.0 </location>
+        </locations>
+    </nodes>
+</network>

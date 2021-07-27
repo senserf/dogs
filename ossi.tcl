@@ -64,7 +64,7 @@ proc sensor_to_voltage { val } {
 	# integer volts
 	set g [expr { $val >> 8 }]
 	set f [expr { double($val & 0xff) / 256.0 }]
-	return [format %4.2f [expr { double($g) + $f }]]
+	return [format "%4.2fV" [expr { double($g) + $f }]]
 }
 
 ###############################################################################
@@ -183,7 +183,6 @@ oss_message status 0x03 {
 #
 	lword	uptime;
 	lword	taken;
-	lword	left;
 	word 	battery;
 	word	freemem;
 	word	minmem;
@@ -636,8 +635,7 @@ proc parse_cmd_ss { ord } {
 
 	parse_empty
 
-	oss_issuecommand $ord [oss_setvalues [list $ctime $cnt $frq] \
-		"sample"]
+	oss_issuecommand $ord [oss_setvalues [list $frq] "sample"]
 }
 
 proc parse_cmd_sample { } {
@@ -1159,8 +1157,8 @@ proc show_msg_motion { msg } {
 	lassign [oss_getvalues $msg "motion"] evt acc
 	lassign $acc x y z
 
-	return "Motion: ([format %5u $evt])\
-		 \[A [to_f16 $x] [to_f16 $y] [to_f16 $z]\]\n"
+	oss_ttyout "Motion: ([format %5u $evt])\
+		 \[A [to_f16 $x] [to_f16 $y] [to_f16 $z]\]"
 }
 
 proc show_report_humid { d cmp } {

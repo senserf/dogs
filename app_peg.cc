@@ -216,6 +216,8 @@ fsm root {
 
 		word si;
 
+		APS.nodeid = GROUP_ID;
+
 		// Indicates the AP is plugged in
 		led_init (2);
 		leds (0, 1);
