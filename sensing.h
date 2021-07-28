@@ -32,12 +32,11 @@
 #define	SENSOR_BATTERY		(-1)
 
 // Logical indexes for the application
-// ... and why exactly can't we use system identifiers? OK, who cares!
 #define	MPU9250_INDEX		0
-#define HDC1000_INDEX		1
-#define OBMICROPHONE_INDEX	2
-#define OPT3001_INDEX		3
-#define BMP280_INDEX		4
+#define OBMICROPHONE_INDEX	1
+#define BMP280_INDEX		2
+#define HDC1000_INDEX		3
+#define OPT3001_INDEX		4
 
 #define	MPU9250_FLAG		(1 << MPU9250_INDEX)
 #define HDC1000_FLAG		(1 << HDC1000_INDEX)

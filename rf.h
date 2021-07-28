@@ -24,23 +24,21 @@
 
 // Note that CC1350_MAXPLEN = 250, we can play with this
 #define	MAX_PACKET_LENGTH		64
-// NHId + CRC (there is just the network Id
-#define	RFPFRAME			4
-// Offset to OSS header
-#define	RFPHDOFF			2
-// RFPHDOFF + OSS header
-#define	OSSFRAME			(RFPHDOFF + sizeof (oss_hdr_t))
-// Minimum length of an OSS packet (header + at least one parameter)
-#define	OSSMINPL			(RFPFRAME + sizeof (oss_hdr_t) + 2)
-// Maximum length of a packet payload
-#define	MAX_PAYLOAD_LENGTH		(MAX_PACKET_LENGTH - RFPFRAME - \
-						sizeof (oss_hdr_t))
-
-// RF packet offsets to OSS info: oss hdr
-#define	osshdr(p)		((oss_hdr_t*)(((byte*)(p)) + RFPHDOFF))
-// First word past the header
-#define	osspar(p)		(((address)(p)) + (OSSFRAME/2))
-
+// Trailer length
+#define	PKT_FRAME_TRAIL			2
+// PHY header
+#define	PKT_FRAME_PHDR			2
+// OSS frame
+#define	PKT_FRAME_OSS			sizeof (oss_hdr_t)
+// Full frame
+#define	PKT_FRAME_ALL			(PKT_FRAME_PHDR + PKT_FRAME_OSS +\
+						PKT_FRAME_TRAIL)
+// OSS header offset
+#define	pkt_osshdr(p)			((oss_hdr_t*)(((byte*)(p)) + \
+						PKT_FRAME_PHDR))
+// Payload offset
+#define	pkt_payload(p)			(((address)(p)) + ((PKT_FRAME_PHDR + \
+						PKT_FRAME_OSS)/2))
 #define	GROUP_ID		((word)(host_id >> 16))
 
 // ============================================================================

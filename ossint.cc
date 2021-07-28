@@ -26,7 +26,7 @@ void ossint_motion_event (address values, word events) {
 	if ((msg = osscmn_xpkt (message_motion_code, LastRef,
 				sizeof (message_motion_t))) != NULL) {
 
-		pmt = (message_motion_t*) osspar (msg);
+		pmt = (message_motion_t*) pkt_payload (msg);
 		pmt->accel [0] = values [0];
 		pmt->accel [1] = values [1];
 		pmt->accel [2] = values [2];
@@ -67,7 +67,7 @@ fsm ossint_sensor_status_sender {
 			release;
 		}
 
-		pmt = (message_status_t*) osspar (msg);
+		pmt = (message_status_t*) pkt_payload (msg);
 		pmt->uptime = seconds ();
 		pmt->taken = SamplesTaken;
 		pmt->battery = batt;

@@ -7,9 +7,9 @@
 #
 variable SNAMES
 #
-set SNAMES(S) 		{ "imu" "humidity" "microphone" "light" "pressure" }
+set SNAMES(S) 		{ "imu" "microphone" "pressure" "humidity" "light" }
 # Single-letter abbreviations
-set SNAMES(A)		"ihmlp"
+set SNAMES(A)		"imphl"
 #
 # Discrete gradation for those parameters that fit the "g" class. Actual 
 # numerical parameters will be mapped into this scale by the node. These
@@ -628,7 +628,7 @@ proc parse_cmd_ss { ord } {
 		set handled($k) ""
 
 		if { $k == "frequency" } {
-			set frq [parse_value "-frequency" 1 256]
+			set frq [parse_value "-frequency" 1 [expr { 256 * 60 }]]
 			continue
 		}
 	}
@@ -947,22 +947,22 @@ proc show_msg_report { msg } {
 		append res [show_report_imu data $cmp]
 	}
 
-	set cmp [expr { ($layout >> 5) & 0x3 }]
-	if $cmp {
-		append res [show_report_humid data $cmp]
-	}
-
 	if [expr { ($layout >> 7) & 0x1 }] {
 		append res [show_report_mic data]
-	}
-
-	if [expr { ($layout >> 8) & 0x1 }] {
-		append res [show_report_light data]
 	}
 
 	set cmp [expr { ($layout >> 9) & 0x3 }]
 	if $cmp {
 		append res [show_report_press data $cmp]
+	}
+
+	set cmp [expr { ($layout >> 5) & 0x3 }]
+	if $cmp {
+		append res [show_report_humid data $cmp]
+	}
+
+	if [expr { ($layout >> 8) & 0x1 }] {
+		append res [show_report_light data]
 	}
 
 	oss_ttyout $res
@@ -1262,7 +1262,9 @@ proc show_sblock { ref dat } {
 		set ci [lindex $dat $i]
 		# turn them into 16-bit floats
 		append fm [to_f16 [expr { ($ci >> 16) & 0xffc0 }]]
+		append fm " "
 		append fm [to_f16 [expr { ($ci >>  6) & 0xffc0 }]]
+		append fm " "
 		append fm [to_f16 [expr { ($ci <<  4) & 0xffc0 }]]
 		append fm "\n"
 		set b [expr {  $ci        & 0x0003 }]
@@ -1270,5 +1272,5 @@ proc show_sblock { ref dat } {
 		incr sh 2
 	}
 
-	return "B: [format %10u $bn]\n$fm"
+	oss_ttyout "B: [format %10u $bn]\n$fm"
 }

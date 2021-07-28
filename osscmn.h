@@ -49,7 +49,6 @@
 // The block span is equal to 8 * MAP_SIZE - 7; this is the worst case number
 // of blocks from the actual (unaligned) offset accommodated in the map
 #define	STRM_MAX_BLOCKSPAN	(8 * STRM_MAP_SIZE - 7)
-#define	STRM_MAX_OFFSET		(STRM_MAX_BLOCKSPAN - 1)
 // TX space between cars; make it a parameter? Should be larger than the
 // intrinsic space of the driver with LBT off
 #define	STRM_CAR_SPACE		5
@@ -58,25 +57,17 @@
 // Max payload of ACK packet
 #define	STRM_MAX_ACKPAY		58
 
+#ifdef __SMURPH__
+#undef	STRM_TRAIN_LENGTH
+#undef	STRM_TRAIN_SPACE
+#define	STRM_TRAIN_LENGTH	8
+#define	STRM_TRAIN_SPACE	1024
+#endif
+
 // Train sender status
 #define	STRM_TSSTAT_NONE	0
 #define	STRM_TSSTAT_WDAT	1
 #define STRM_TSSTAT_WACK	2
-
-typedef	struct {
-//
-// Train car payload
-//
-	union {
-		struct {
-			word x : 10;
-			word y : 10;
-			word z : 10;
-			word u : 2;
-		} enc;
-		lword	code;
-	};
-} strpw_t;
 
 typedef	struct strblk_t strblk_t;
 
@@ -85,8 +76,8 @@ struct strblk_t {
 // Queued block awaiting transmission in a car
 //
 	strblk_t	*next;		// We link them
-	lword 		bn;		// Block number; we need it unpacked
-	strpw_t		block [STRM_NCODES];
+	lword 		bn;		// Block number
+	lword		block [STRM_NCODES];
 };
 
 typedef	struct {

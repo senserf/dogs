@@ -196,12 +196,10 @@ fsm mpu9250_sampler {
 
 		// The number of motion events
 		mpu9250_desc.motion_events ++;
-trace ("SAMP event");
 		ossint_motion_event (values, mpu9250_desc.motion_events);
 
 	initial state MP_LOOP:
 
-trace ("SAMP start");
 		wait_sensor (SENSOR_MPU9250, MP_MOTION);
 		release;
 }
@@ -485,7 +483,6 @@ word sensing_configure (const command_config_t *cmd, sint lft) {
 		sen = (*buf >> 4) & 0x0f;
 		// Length of the chunk
 		len = (*buf & 0x0f) + 1;
-trace ("SEN: %1d %1d %1d", sen, len, lft);
 		buf++;
 		lft--;
 		if (len > lft)
@@ -512,7 +509,6 @@ trace ("SEN: %1d %1d %1d", sen, len, lft);
 				sen = configure_sensor (bmp280_conf,
 					sizeof (bmp280_conf), buf, len);
 				break;
-
 			default:
 				return ACK_PARAM;
 		}
@@ -529,10 +525,20 @@ trace ("SEN: %1d %1d %1d", sen, len, lft);
 // ============================================================================
 
 static trueconst void (*sen_turn_fun [2][NUMBER_OF_SENSORS])() = { 
-	 { sensor_on_mpu9250, sensor_on_hdc1000, sensor_on_obmicrophone,
-		sensor_on_opt3001, sensor_on_bmp280 },
-	 { sensor_off_mpu9250, sensor_off_hdc1000, sensor_off_obmicrophone,
-		sensor_off_opt3001, sensor_off_bmp280 }
+	 {
+		sensor_on_mpu9250, 
+		sensor_on_obmicrophone,
+		sensor_on_bmp280,
+		sensor_on_hdc1000,
+		sensor_on_opt3001,
+	},
+	{
+		sensor_off_mpu9250,
+		sensor_off_obmicrophone,
+		sensor_off_bmp280,
+		sensor_off_hdc1000,
+		sensor_off_opt3001,
+	}
 };
 
 word sensing_turn (byte s) {
@@ -642,15 +648,6 @@ word sensing_report (byte *where, address mask) {
 		}
 	}
 
-	if (Sensors & HDC1000_FLAG) {
-		nb += (cb = (hdc1000_desc.components == 3) ? 4 : 2);
-		if (where) {
-			memcpy (where, hdc1000_desc.values, cb);
-			where += cb;
-			*mask |= (hdc1000_desc.components << 5);
-		}
-	}
-
 	if (Sensors & OBMICROPHONE_FLAG) {
 		nb += 8;
 		if (where) {
@@ -661,6 +658,24 @@ word sensing_report (byte *where, address mask) {
 		}
 	}
 
+	if (Sensors & BMP280_FLAG) {
+		nb += (cb = (bmp280_desc.components == 3) ? 8 : 4);
+		if (where) {
+			memcpy (where, bmp280_desc.values, cb);
+			where += cb;
+			*mask |= (bmp280_desc.components << 9);
+		}
+	}
+
+	if (Sensors & HDC1000_FLAG) {
+		nb += (cb = (hdc1000_desc.components == 3) ? 4 : 2);
+		if (where) {
+			memcpy (where, hdc1000_desc.values, cb);
+			where += cb;
+			*mask |= (hdc1000_desc.components << 5);
+		}
+	}
+
 	if (Sensors & OPT3001_FLAG) {
 		nb += 2;
 		// We only return the first word
@@ -668,15 +683,6 @@ word sensing_report (byte *where, address mask) {
 			*((address)where) = opt3001_desc.values [0];
 			where += 2;
 			*mask |= 1 << 8;
-		}
-	}
-
-	if (Sensors & BMP280_FLAG) {
-		nb += (cb = (bmp280_desc.components == 3) ? 8 : 4);
-		if (where) {
-			memcpy (where, bmp280_desc.values, cb);
-			where += cb;
-			*mask |= (bmp280_desc.components << 9);
 		}
 	}
 

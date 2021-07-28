@@ -143,22 +143,24 @@ static void handle_oss_command () {
 #undef	msghdr
 	}
 
-	if (PML > MAX_PACKET_LENGTH - RFPFRAME - sizeof (oss_hdr_t)) {
+	if (PML > MAX_PACKET_LENGTH - PKT_FRAME_ALL) {
 		// Too long for radio
 		oss_ack (ACK_AP_TOOLONG);
 		return;
 	}
 
 	// To be passed to the node
+	if (CMD->code == command_stream_code)
+		// Intercept this one for a trifle
+		pegstream_init ();
 
 #ifndef	__SMURPH__
 	// No WOR in VUEE
 	for (i = 0; i < APS.nworp; i++) {
 		// This is executed if WOR wakeup is set, nworp times
-		if ((msg = tcv_wnpu (WNONE, RFC,
-		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
+		if ((msg = tcv_wnpu (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
-		memcpy (msg + (RFPHDOFF/2), CMD, PML + sizeof (oss_hdr_t));
+		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
 		tcv_endpx (msg, NO);
 	}
 #endif
@@ -173,10 +175,9 @@ static void handle_oss_command () {
 #endif
 		// At least once if APS.nworp == 0, ragrdless of the setting of
 		// norp
-		if ((msg = tcv_wnp (WNONE, RFC,
-		    PML + sizeof (oss_hdr_t) + RFPFRAME)) == NULL)
+		if ((msg = tcv_wnp (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
-		memcpy (msg + (RFPHDOFF/2), CMD, PML + sizeof (oss_hdr_t));
+		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
 		tcv_endpx (msg, YES);
 		i++;
 	} while (i < APS.norp);
@@ -189,23 +190,23 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 	address msg;
 
 	if (code == MESSAGE_CODE_SBLOCK) {
-		if (mpl != STRM_NCODES * 4)
+		if (mpl < STRM_NCODES * 4)
 			// Ignore garbage
 			return;
 		pegstream_tally_block (ref, pkt);
 	} else if (code == MESSAGE_CODE_ETRAIN) {
-		if (mpl == sizeof (streot_t))
+		if (mpl >= sizeof (streot_t))
 			pegstream_eot (ref, pkt);
-		// Do not pass to OSS
+		// Never pass this to the OSS
 		return;
 	}
 
 	// Pass to OSS
 
 	if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2)) != NULL) {
-		((byte*)msg) [0] = code;
-		((byte*)msg) [1] = ref;
-		memcpy (msg + (RFPHDOFF/2), pkt, mpl);
+		((oss_hdr_t*)msg)->code = code;
+		((oss_hdr_t*)msg)->ref = ref;
+		memcpy (msg + (PKT_FRAME_OSS/2), pkt, mpl);
 		tcv_endp (msg);
 	}
 }

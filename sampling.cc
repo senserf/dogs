@@ -46,7 +46,7 @@ fsm sampling_generator {
 		}
 
 		// Fill in the message
-		pmt = (message_report_t*) osspar (msg);
+		pmt = (message_report_t*) pkt_payload (msg);
 		pmt->sample = (word) SamplesTaken;
 		pmt->data.size = sensing_report ((byte*)(pmt->data.content),
 			&(pmt->layout));

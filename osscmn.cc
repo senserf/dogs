@@ -28,11 +28,11 @@ fsm radio_receiver {
 
 		pkt = tcv_rnp (RS_LOOP, RFC);
 
-		// NETID is the only identifier
-		if (tcv_left (pkt) >= OSSMINPL) {
-			osh = osshdr (pkt);
+		if (tcv_left (pkt) >= PKT_FRAME_ALL) {
+			osh = pkt_osshdr (pkt);
 			handle_rf_packet (osh->code, osh->ref, 
-				osspar (pkt), tcv_left (pkt) - OSSFRAME);
+				pkt_payload (pkt),
+					tcv_left(pkt) - PKT_FRAME_ALL);
 		}
 
 		tcv_endp (pkt);
@@ -48,10 +48,9 @@ address osscmn_xpkt (byte code, byte ref, word len) {
 	if (len & 1)
 		// Force the length to be even
 		len++;
-	if ((msg = tcv_wnp (WNONE, RFC, len + RFPFRAME + sizeof (oss_hdr_t))) !=
-	    NULL) {
-		osshdr (msg) -> code = code;
-		osshdr (msg) -> ref = ref;
+	if ((msg = tcv_wnp (WNONE, RFC, len + PKT_FRAME_ALL)) != NULL) {
+		pkt_osshdr (msg) -> code = code;
+		pkt_osshdr (msg) -> ref = ref;
 	}
 	return msg;
 }
@@ -61,7 +60,7 @@ void osscmn_xack (byte ref, word status) {
 	address msg;
 
 	if ((msg = osscmn_xpkt (0, ref, sizeof (status))) != NULL) {
-		osspar (msg) [0] = status;
+		pkt_payload (msg) [0] = status;
 		tcv_endpx (msg, YES);
 	}
 }

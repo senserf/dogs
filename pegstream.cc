@@ -15,7 +15,7 @@ static byte ackb [STRM_MAX_ACKPAY];
 static sint abeg, aend, acnt, aibm;
 static lword alst;
 
-// The bitmap holds at least STRM_MAX_OFFSET block status bits counting
+// The bitmap holds at least STRM_MAX_BLOCKSPAN-1 block status bits counting
 // from bbase; bo is assumed to be divided by 8 (representing an aligned
 // 8-tuple)
 #define	bme(bo)	bmap [(bo) & STRM_MAP_MASK]
@@ -54,12 +54,13 @@ static void trim_bitmap (lword bo) {
 	}
 }
 
-static inline void add_missing (lword from, lword upto) {
+static inline void add_to_map (lword from, lword upto) {
 //
 // Add blocks from to upto (inclusively) to the map as missing
 //
 	lword bo;
 	sint bb;
+trace ("ADDMISSING: %1u - %1u", from, upto);
 
 	bo = from >> 3;
 	bb = from & 0x7;
@@ -80,15 +81,26 @@ static inline void add_missing (lword from, lword upto) {
 	} while (1);
 }
 
+static inline void remove_from_map (lword bn) {
+
+	lword bo;
+
+	if (((bo = bn >> 3) >= bbase) && (bo - bbase < STRM_MAP_SIZE))
+		// Covered by the map
+		bme (bo) &= ~(1 << (bn & 0x7));
+}
+
 static inline void init_ack () {
 
 	abeg = aend = acnt = 0;
-	alst = lsent - STRM_MAX_OFFSET - 1;
+	alst = (lsent < STRM_MAX_BLOCKSPAN) ? 0 : lsent - STRM_MAX_BLOCKSPAN;
 	aibm = -1;
+trace ("INITACK: %1u %1u %1u", lsent, alst, STRM_MAX_BLOCKSPAN);
 }
 
 static inline void close_ack () {
 
+trace ("CLOSEACK: %1u %1u", abeg, aend);
 	if (aibm >= 0) {
 		// Close the open map
 		incm (aend, STRM_MAX_ACKPAY);
@@ -207,6 +219,7 @@ static void add_ack (lword bn) {
 //
 	lword d;
 
+trace ("ADDACK: %1u %1u %1u", bn, alst, lsent);
 	if (bn <= alst || bn > lsent)
 		// Must be increasing and up to lsent (L)
 		return;
@@ -232,7 +245,7 @@ static void add_ack (lword bn) {
 	incr_ack ();
 
 	if ((d = bn - alst - 1) <= 5) {
-		// A bit map costs the same mempry as a short offset, but
+		// A bit map costs the same memory as a short offset, but
 		// offsets are easier to handle. Use bit map, if there's a
 		// chance (at this point) that it will cover more than one
 		// block
@@ -260,8 +273,7 @@ static void add_ack (lword bn) {
 void pegstream_init () {
 
 	bzero (bmap, STRM_MAP_SIZE);
-	bbase = lsent = 0;
-	lrcvd = lsent - 1;
+	lrcvd = bbase = lsent = 0;
 }
 
 void pegstream_tally_block (byte ref, address pkt) {
@@ -273,22 +285,32 @@ void pegstream_tally_block (byte ref, address pkt) {
 
 	for (bn = ref, bb = 0; bb < STRM_NCODES; bb++)
 		bn |= (((lword*)pkt) [bb] & 0x3) << ((bb + bb) + 8);
+trace ("TALLY: %1u %1u", bn, lrcvd);
 
-	if (bn < lrcvd) {
-		// This is a block from the past, remove it from the map
-		if ((bo = bn >> 3) < bbase)
-			// Too old
-			return;
-		bb = bn & 0x7;
-		bme (bo) &= ~(1 << bb);
+	if (bn <= lrcvd) {
+		// This is a block from the past, remove it from the map. Note
+		// that lrcvd separates blocks from the past (if they were
+		// missing, they are covered by the map) from those yet to
+		// arrive.
+		remove_from_map (bn);
 		return;
 	}
 
+	// Here we have bn > lrcvd
+#if 0
+// =========
+if (bn == 3 || bn == 4 || bn == 5 || bn == 7 || bn == 29 || bn == 31 || bn == 32 || bn == 40)
+// Drop it
+return;
+// =========
+#endif
 	if (++lrcvd == bn)
 		// This is what we are betting on, nothing to do
 		return;
 
-	add_missing (lrcvd, bn - 1);
+	add_to_map (lrcvd, bn - 1);
+
+	lrcvd = bn;
 }
 
 void pegstream_eot (byte ref, address pkt) {
@@ -304,13 +326,16 @@ void pegstream_eot (byte ref, address pkt) {
 	lsent = ((streot_t*) pkt) -> last;
 	// Back offset to the earliest available block
 	of = ((streot_t*) pkt) -> offset;
+trace ("PEG EOT: %1u %1u %1u", lsent, lrcvd, of);
 
 	// A sanity check
 	if (lsent < lrcvd || of > lsent)
 		return;
 
-	if (lsent > lrcvd)
-		add_missing (lrcvd + 1, lsent);
+	if (lsent > lrcvd) {
+		add_to_map (lrcvd + 1, lsent);
+		lrcvd = lsent;
+	}
 
 	// Build the ACK packet
 	init_ack ();
@@ -328,22 +353,21 @@ void pegstream_eot (byte ref, address pkt) {
 	close_ack ();
 
 	// Copy the ACK to the packet; make sure tha packet length is even
-	if ((msg = osscmn_xpkt (MESSAGE_CODE_STRACK, ref, (acnt+1) & ~1)) !=
-	    NULL) {
+	if ((msg = osscmn_xpkt (MESSAGE_CODE_STRACK, ref, acnt)) != NULL) {
 		if (abeg <= aend) {
 			// A single chunk
-			memcpy (osspar (msg), ackb + abeg, acnt);
+			memcpy (pkt_payload (msg), ackb + abeg, acnt);
 		} else {
 			// Two chunks
-			memcpy (osspar (msg), ackb + abeg, STRM_MAX_ACKPAY -
-				abeg);
-			memcpy (osspar (msg), ackb, aend);
+			memcpy (pkt_payload (msg), ackb + abeg,
+				STRM_MAX_ACKPAY - abeg);
+			memcpy (pkt_payload (msg), ackb, aend);
 		}
 	}
 
 	if (acnt & 1)
 		// Add a NOP zero map
-		((byte*)(osspar (msg))) [acnt] = 0x80;
+		((byte*)(pkt_payload (msg))) [acnt] = 0x80;
 
 	tcv_endpx (msg, NO);
 }
