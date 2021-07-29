@@ -12,6 +12,7 @@
 //+++ sampling.cc
 
 #include "sysio.h"
+#include "ossi.h"
 
 #define	MAX_SAMPLES_PER_MINUTE	(256 * 60)
 #define	MIN_SAMPLES_PER_MINUTE	1

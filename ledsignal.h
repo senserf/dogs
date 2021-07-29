@@ -6,12 +6,14 @@
 	This file is part of the PICOS platform
 
 */
-#ifndef __pg_ledblink_h
-#define	__pg_ledblink_h
+#ifndef __pg_ledsignal_h
+#define	__pg_ledsignal_h
 
-//+++ ledblink.cc
+//+++ "ledsignal.cc"
 
-void led_blink (word, word, word);
+#include "sysio.h"
+
+void led_signal (word, word, word);
 void led_init (sint);
 void led_stop ();
 

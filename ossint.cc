@@ -16,7 +16,7 @@
 #include "rf.h"
 #include "sensing.h"
 #include "sampling.h"
-#include "ledblink.h"
+#include "ledsignal.h"
 
 void ossint_motion_event (address values, word events) {
 
@@ -92,7 +92,7 @@ void ossint_toggle_radio () {
 
 	osscmn_turn_radio (what);
 
-	led_blink (0, 2 + 2 * what, 128);
+	led_signal (0, 2 + 2 * what, 128);
 }
 
 word ossint_set_radio (const command_radio_t *pmt, word pml) {

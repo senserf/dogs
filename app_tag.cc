@@ -12,7 +12,7 @@
 #include "sensing.h"
 #include "streaming.h"
 #include "sampling.h"
-#include "ledblink.h"
+#include "ledsignal.h"
 
 // ============================================================================
 // ============================================================================
@@ -28,7 +28,7 @@ fsm delayed_switch (byte opn) {
 		if (opn == RADIO_MODE_OFF || opn == RADIO_MODE_HIBERNATE) {
 			// Radio goes off or hibernate; give it one second for
 			// the ACK to get through and then proceed
-			led_blink (0, opn ? 64 : 16, opn ? 72 : 150);
+			led_signal (0, opn ? 64 : 16, opn ? 72 : 150);
 			delay (1024, DS_SWITCH);
 			release;
 		}
@@ -145,7 +145,7 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 			ret = ACK_COMMAND;
 	}
 			
-	led_blink (0, ret + 1, 64);
+	led_signal (0, ret + 1, 64);
 
 	// Send the ack
 	osscmn_xack (LastRef, ret);

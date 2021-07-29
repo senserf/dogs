@@ -58,10 +58,16 @@
 #define	STRM_MAX_ACKPAY		58
 
 #ifdef __SMURPH__
-#undef	STRM_TRAIN_LENGTH
+#undef	STRM_TRAIN_LENGTH	
+#undef	STRM_MAX_QUEUED
+#undef	STRM_MAP_SIZE
 #undef	STRM_TRAIN_SPACE
+#undef	STRM_MAX_ACKPAY
 #define	STRM_TRAIN_LENGTH	8
-#define	STRM_TRAIN_SPACE	1024
+#define	STRM_MAX_QUEUED		16
+#define	STRM_MAP_SIZE		16
+#define	STRM_TRAIN_SPACE	128
+#define	STRM_MAX_ACKPAY		16
 #endif
 
 // Train sender status
@@ -88,9 +94,6 @@ typedef	struct {
 	word offset;	// The backward offset to the first "askable" block
 } streot_t;
 
-#define	ack_off_s(b)	(*(b) + 1)
-#define	ack_off_l(b)	((((word)(*(b)) & 0x3f) << 8) + *((b) + 1) + 1)
-
 // ============================================================================
 
 extern byte	RadioOn, LastRef;
@@ -107,6 +110,5 @@ void osscmn_rfcontrol (sint, address);
 void handle_rf_packet (byte, byte, const address, word);
 
 #define toggle(a)	((a) = 1 - (a))
-#define	incm(a,m)	do { if (++(a) == (m)) (a) = 0; } while (0)
 
 #endif

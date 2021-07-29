@@ -18,7 +18,7 @@
 // UART packet length as a function of the payload length (2 bytes for CRC)
 #define	upl(a)		((a) + 2)
 
-#include "ledblink.h"
+#include "ledsignal.h"
 
 // ============================================================================
 // ============================================================================
@@ -35,12 +35,12 @@ static command_ap_t	APS = { 1, 1024, 0, 2 };		// AP status
 
 static void led_hb () {
 	// Two quick blinks on heartbeat
-	led_blink (0, 2, 256);
+	led_signal (0, 2, 256);
 }
 
 static void led_tt () {
 	// One longish blink on outgoing message
-	led_blink (0, 1, 768);
+	led_signal (0, 1, 768);
 }
 
 // ============================================================================

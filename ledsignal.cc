@@ -1,13 +1,13 @@
-#include "ledblink.h"
+#include "ledsignal.h"
 
 typedef	struct {
 	word bdelay, nblinks;
-} ledblink_t;
+} __ledblink_t;
 
-static ledblink_t *all_leds;
+static __ledblink_t *all_leds;
 static sint	   nleds;
 
-fsm sig_blinker (word led) {
+fsm __sig_blinker (word led) {
 
 	state BL_UPD:
 		// We need the third state because we want nblinks to act as
@@ -31,7 +31,7 @@ fsm sig_blinker (word led) {
 		delay (all_leds [led] . bdelay, BL_UPD);
 }
 
-void led_blink (word led, word n, word d) {
+void led_signal (word led, word n, word d) {
 
 	word sb;
 
@@ -73,24 +73,24 @@ void led_blink (word led, word n, word d) {
 
 	if (sb == 0)
 		// Start the process
-		runfsm sig_blinker (led);
+		runfsm __sig_blinker (led);
 }
 
 void led_stop () {
 
 	sint i;
 
-if (crunning (sig_blinker))
-	killall (sig_blinker);
-	bzero (all_leds, nleds * sizeof (ledblink_t));
+if (crunning (__sig_blinker))
+	killall (__sig_blinker);
+	bzero (all_leds, nleds * sizeof (__ledblink_t));
 	for (i = 0; i < nleds; i++)
 		leds (i, 0);
 }
 
 void led_init (sint nl) {
 
-	if ((all_leds = (ledblink_t*) umalloc ((nleds = nl) *
-		sizeof (ledblink_t))) == NULL)
+	if ((all_leds = (__ledblink_t*) umalloc ((nleds = nl) *
+		sizeof (__ledblink_t))) == NULL)
 			syserror (ERESOURCE, "led");
 
 	led_stop ();

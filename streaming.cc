@@ -99,7 +99,6 @@ static void fill_current_car (address pkt) {
 static void fill_eot (address pkt) {
 
 #define	pay	((streot_t*) pkt_payload (pkt))
-trace ("FILLEOT: %1u %1d", NQueued, BHead != NULL);
 
 	pkt_osshdr (pkt) -> code = MESSAGE_CODE_ETRAIN;
 	pkt_osshdr (pkt) -> ref = LTrain;
@@ -125,7 +124,6 @@ fsm streaming_trainsender {
 	state ST_NEXT:
 
 		address pkt;
-trace ("TSEND NEXT");
 
 		if (NCars >= STRM_TRAIN_LENGTH) {
 			TSStat = STRM_TSSTAT_WACK;
@@ -146,7 +144,6 @@ trace ("TSEND NEXT");
 
 			fill_current_car (pkt);
 			// No LBT
-trace ("TSEND GONE %8x %8x %8x", ((lword*)pkt) [0], ((lword*)pkt) [1], ((lword*)pkt) [2]);
 			tcv_endpx (pkt, NO);
 		}
 
@@ -161,12 +158,10 @@ trace ("TSEND GONE %8x %8x %8x", ((lword*)pkt) [0], ((lword*)pkt) [1], ((lword*)
 
 		address pkt;
 
-trace ("ENDTRAIN: %1u", TSStat);
 		if (TSStat != STRM_TSSTAT_WACK)
 			// The ACK has arrived and has been processed
 			sameas ST_NEWTRAIN;
 
-trace ("ENDTRAIN: send");
 		// Keep sending EOT packets waiting for an ACK
 		if ((pkt = tcv_wnp (ST_ENDTRAIN, RFC, sizeof (streot_t) +
 		    PKT_FRAME_ALL)) != NULL) {
@@ -210,118 +205,142 @@ fsm streaming_generator {
 		delay (SampleSpace, ST_TAKE);
 }
 
-void streaming_tack (byte ref, byte *ab, word len) {
+void streaming_tack (byte ref, byte *ab, word plen) {
 //
 // Process a train ACK
 //
-	strblk_t *cb, *pv, *tm;
-	lword	nts;
+	strblk_t *cb, *pv, *tm, *ta;
+	lword	nts, boundary;
 	sint	mp;
+	word 	rlen;
 
-trace ("TACK: %1u %1u %1u %1u %1u", TSStat, ref, LTrain, len, NQueued);
-for (mp = 0; mp < len; mp++) trace (" %02x", ab [mp]);
-if (NQueued) trace ("BHEAD: %1u", BHead->bn);
+// ============================================================================
+// Initialize for scanning through the block queue
+#define ini_cb	do { cb = BHead; pv = NULL; ta = NULL; } while (0)
+// Advance the queue pointer
+#define	adv_cb	do { ta = cb; cb = (pv = cb)->next; } while (0)
+// Delete current item
+#define	del_cb	do { tm = cb; cb = cb->next; ufree (tm); NQueued--; \
+		    if (pv == NULL) BHead = cb; else pv->next = cb; } while (0)
+// Complete packet queue processing
+#define	end_cb	do { if (cb == NULL) BTail = ta; } while (0)
+// ============================================================================
 
 	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain)
 		// Just ignore
 		return;
 
-	cb = BHead;		// Current
-	pv = NULL;		// Previous
 	mp = 0;
+	rlen = plen;		// Remaining length
 
 	// This is the starting setting of the block number reference; this
-	// cannot be a legit block to retain because it has not be indicated
-	// in the ACK, so it is one less than the minimum legit number
+	// cannot be a block to retain because it has not been indicated
+	// in the ACK, so it is one less than the minimum legit number than
+	// the ACK can specify. Note that when we start, there is no history,
+	// so the first block is numbered 1 (not zero).
 	nts = (LastSent < STRM_MAX_BLOCKSPAN) ? 0 :
 		LastSent - STRM_MAX_BLOCKSPAN;
 
-	BTail = NULL;
-	while (cb != NULL) {
-		// Check if this block should stay
-		// if (must_stay ()) ...
-		while (cb->bn > nts) {
-trace ("SKIP: %1u > %1u", cb->bn, nts);
-			// When we hit a block larger than next block from the
-			// ACK, the ACK block must be skipped, because it means
-			// that the requested block is not available any more
-			// next_to_stay () ...
+	ini_cb;
+
+	while (cb != NULL && cb->bn <= LastSent) {
+		// Check if the block should stay in the queue for
+		// retransmission. Block > LastSent stay uncoditionally because
+		// the are new and not covered by the ACK. We keep scanning
+		// through the ACK until we find a block that is >= to the
+		// current block.
+		while (nts < cb->bn) {
 			do {
 				if (mp) {
 					// Doing the bit map
 					if (mp == 7) {
 						// Done
 						mp = 0;
-						len--;
+						rlen--;
 						ab++;
 					} else {
 try_map:
 						nts++;
 						if (*ab & (1 << mp++))
-							// return next_to_stay
 							break;
 					}
 					continue;
 				}
-				if (len == 0) {
-					// No more blocks
-force_end:
-					// Skip all blocks to the end
-					nts = MAX_LWORD;
-					break;
-				}
+
+				if (rlen == 0)
+					// No more blocks in the ACK
+					goto end_ack;
+
 				if (*ab & 0x80) {
 					// A new bit map; a zero map is a NOP
 					// advancing nts by 7
 					mp = 0;
 					goto try_map;
 				}
+
 				if (*ab & 0x40) {
 					// Long offset
-					if (len < 2) {
+					if (rlen < 2) {
 						// This won't happen
-						len = 0;
-						goto force_end;
+						rlen = 0;
+						goto end_ack;
 					}
-					nts += ack_off_l (ab);
-					len -= 2;
-					ab += 2;
-					break;
+					nts += (((word)(*ab) & 0x3f) << 8);
+					rlen--;
+					ab++;
 				}
-				nts += ack_off_s (ab);
-				len--;
+
+				// A short offset or the second part of a
+				// long one
+				nts += *ab + 1;
+				rlen--;
 				ab++;
 				break;
+
 			} while (1);
 		}
 
-		if (cb->bn == nts || cb->bn > LastSent) {
-			// The block must stay
-			BTail = cb;
-trace ("STAY: %1u", cb->bn);
-			cb = (pv = cb) -> next;
+		// nts >= cb->bn
+
+		if (cb->bn == nts) {
+			// The block must stay because the ACK asks for it
+			adv_cb;
 		} else {
-trace ("DROP: %1u", cb->bn);
-			tm = cb;
-			cb = cb -> next;
-			ufree (tm);
-			NQueued--;
-			if (pv == NULL)
-				BHead = cb;
-			else
-				pv -> next = cb;
+			// The block can be dropped: nts > bn
+			del_cb;
 		}
 	}
 
+end_ack:
+
+	// Queue boundary
+	if (plen < STRM_MAX_ACKPAY)
+		nts = LastSent;
+
+	while (cb != NULL && cb->bn <= LastSent)
+		// Delete those less than or equal to:
+		// LastSent - when the ACK was complete
+		// nts      - when the ACK appears overflown
+		// The second case covers a bit map as the last
+		// item after which nts may extend beyond the
+		// last requested block (implicitely acknowledging
+		// some)
+		del_cb;
+
+	end_cb;
+		
 	TSStat = STRM_TSSTAT_NONE;
 	ptrigger (TSender, TSender);
+#undef	ini_cb
+#undef	adv_cb
+#undef	del_cb
+#undef	end_cb
 }
 
 word streaming_start (const command_sample_t *pmt, word pml) {
 //
 // Assume same request format as for sampling (just the rate for now)
 //
-trace ("STR START: %1d", Status);
 	if (Status == STATUS_SAMPLING)
 		return ACK_BUSY;
 
@@ -355,7 +374,6 @@ trace ("STR START: %1d", Status);
 	    (TSender = runfsm streaming_trainsender)) {
 		Status = STATUS_STREAMING;
 		LTrain = 0;
-trace ("STR STARTED");
 		return ACK_OK;
 	}
 

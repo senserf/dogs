@@ -524,7 +524,9 @@ word sensing_configure (const command_config_t *cmd, sint lft) {
 
 // ============================================================================
 
-static trueconst void (*sen_turn_fun [2][NUMBER_OF_SENSORS])() = { 
+typedef	void (*sen_turn_fun_t)();
+
+static trueconst sen_turn_fun_t sen_turn_fun [2] [NUMBER_OF_SENSORS] = { 
 	 {
 		sensor_on_mpu9250, 
 		sensor_on_obmicrophone,

@@ -12,6 +12,7 @@
 //+++ sensing.cc
 
 #include "sysio.h"
+#include "ossi.h"
 
 #include "mpu9250.h"
 #include "obmicrophone.h"
