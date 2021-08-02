@@ -17,9 +17,17 @@
 #define	UART_RATE_SETTABLE	0
 #define	RADIO_USE_LEDS		0
 #define	LEDS_BLINKING		0
-#define LEDS_DRIVER		1
 
-#define	RADIO_WOR_MODE		1
+// ============================================================================
+
+#define LEDS_DRIVER		1
+#define	N_SIGNAL_LEDS		2
+
+// ============================================================================
+
+#define	RADIO_WOR_MODE		0
 #define	RADIO_OPTIONS		RADIO_OPTION_PXOPTIONS
 #define	RADIO_DEFAULT_POWER	7
 #define	RADIO_DEFAULT_BITRATE	3
+
+// ============================================================================

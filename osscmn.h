@@ -53,7 +53,8 @@
 // intrinsic space of the driver with LBT off
 #define	STRM_CAR_SPACE		5
 // Space between EOT packets
-#define	STRM_TRAIN_SPACE	10
+#define	STRM_MIN_TRAIN_SPACE	20
+#define	STRM_MAX_TRAIN_SPACE	512
 // Max payload of ACK packet
 #define	STRM_MAX_ACKPAY		58
 

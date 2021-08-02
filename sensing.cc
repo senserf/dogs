@@ -691,23 +691,35 @@ word sensing_report (byte *where, address mask) {
 	return nb;
 }
 
-#ifdef	__SMURPH__
+#if EMULATE_SENSORS
 
 // ============================================================================
-// VUEE emulation
+// Sensor emulation
 // ============================================================================
+
+#ifdef	__SMURPH__
+// Use the actual virtual sensor modeled by VUEE
+#define	rds(a,b,c) read_sensor (a, b, c)
+#else
+// Fake the sensor
+static byte les_value = 0;
+static void rds (word st, word sn, address ret)	{ *ret = (word)(les_value++); }
+#endif
 
 void read_mpu9250 (word st, address ret) {
 
 	word tmp;
 	sint i, nc;
 
-	read_sensor (st, SENSOR_MPU9250, &tmp);
+	rds (st, SENSOR_MPU9250, &tmp);
 
 	if (!mpu9250_active) {
 		ret [0] = 0;
 		return;
 	}
+
+	// The value: 0-255 is transformed into a 16-bit FP int
+	tmp |= (tmp << 8);
 
 	if (mpu9250_desc.components == 0x10)
 		// Motion detect mode
@@ -715,16 +727,8 @@ void read_mpu9250 (word st, address ret) {
 	else
 		nc = mpu9250_data_size / 2;
 
-	// This returns a single word which we scale from 0-100 to MIN MAX
-	if (tmp > 100)
-		tmp = 100;
-
-	tmp = 0x8000 + tmp * 655;
-
-	for (i = 0; i < nc; i++) {
+	for (i = 0; i < nc; i++)
 		ret [i] = tmp;
-		tmp += 0x80;
-	}
 }
 
 void read_hdc1000 (word st, address ret) {
@@ -732,33 +736,33 @@ void read_hdc1000 (word st, address ret) {
 	word tmp;
 	sint i, nc;
 
-	read_sensor (st, SENSOR_HDC1000, &tmp);
+	rds (st, SENSOR_HDC1000, &tmp);
 
 	if ((nc = hdc1000_data_size / 2) == 0) {
 		ret [0] = 0;
 		return;
 	}
 
-	if (tmp > 100)
-		tmp = 100;
+	if ((tmp >>= 1) > 99)
+		// Make this look like temperature of % humidity
+		tmp = 99;
+	tmp *= 100;
 
-	tmp = 0x8000 + tmp * 655;
-
-	for (i = 0; i < nc; i++) {
+	for (i = 0; i < nc; i++)
 		ret [i] = tmp;
-		tmp += 0x80;
-	}
 }
 
 void read_obmicrophone (word st, address ret) {
 
 	word tmp;
 
-	read_sensor (st, SENSOR_OBMICROPHONE, &tmp);
+	rds (st, SENSOR_OBMICROPHONE, &tmp);
+
+	tmp |= (tmp << 8);
 
 	if (obmicrophone_active) {
 		((lword*) ret) [0] = (lword) tmp;
-		((lword*) ret) [1] = (lword) (tmp + 1);
+		((lword*) ret) [1] = (lword) tmp;
 	} else {
 		((lword*) ret) [0] = ((lword*) ret) [1] = 0;
 	}
@@ -768,33 +772,32 @@ void read_opt3001 (word st, address ret) {
 
 	word tmp;
 
-	read_sensor (st, SENSOR_OPT3001, &tmp);
+	rds (st, SENSOR_OPT3001, &tmp);
 
-	*ret = opt3001_active ? tmp : 0;
+	if (opt3001_active) {
+		ret [0] = tmp;
+		ret [1] = 0;
+	} else {
+		ret [0] = 0;
+	}
 }
 
 void read_bmp280 (word st, address ret) {
 
 	word tmp;
-	lword ltmp;
 	sint i, nc;
 
-	read_sensor (st, SENSOR_BMP280, &tmp);
+	rds (st, SENSOR_BMP280, &tmp);
 
 	if ((nc = bmp280_data_size/2) == 0) {
 		((lword*)ret) [0] = 0;
 		return;
 	}
+	
+	tmp |= (tmp << 8);
 
-	if (tmp > 100)
-		tmp = 100;
-
-	ltmp = 0x80000000 + tmp * 42949672;
-
-	for (i = 0; i < nc; i++) {
-		((lword*) ret) [i] = ltmp;
-		ltmp += 0x8000;
-	}
+	for (i = 0; i < nc; i++)
+		((lword*) ret) [i] = tmp;
 }
 	
 #endif

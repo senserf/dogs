@@ -172,6 +172,8 @@ oss_command ap 0x08 {
 	byte	nworp;
 	# Packet retry count
 	byte	norp;
+	# Packet loss rate (debugging)
+	word	loss;
 }
 
 #############################################################################
@@ -227,6 +229,7 @@ oss_message ap 0x08 {
 	word	worprl;
 	byte	nworp;
 	byte	norp;
+	word	loss;
 }
 
 oss_message sblock 0x80 {
@@ -350,6 +353,8 @@ set CMDS(ap)		"parse_cmd_ap"
 
 variable LASTCMD	""
 
+variable CTiming	0
+
 proc parse_cmd { line } {
 
 	variable CMDS
@@ -389,7 +394,7 @@ proc parse_cmd { line } {
 	set cc [oss_keymatch $cmd [array names CMDS]]
 	oss_parse -skip
 
-	oss_ttyout $line
+	oss_out $line
 
 	$CMDS($cc)
 
@@ -661,6 +666,7 @@ proc parse_cmd_ap { } {
 	# unused
 	set nodeid 0xFFFF
 	set worprl 0xFFFF
+	set loss 0xFFFF
 	set worp 0xFF
 	set norp 0xFF
 
@@ -671,7 +677,8 @@ proc parse_cmd_ap { } {
 			break
 		}
 
-		set k [oss_keymatch $tp { "node" "wake" "retries" "preamble" }]
+		set k [oss_keymatch $tp { "node" "wake" "retries" "preamble"
+			"loss" }]
 
 		if [info exists handled($k)] {
 			error "duplicate -$k"
@@ -694,13 +701,18 @@ proc parse_cmd_ap { } {
 			continue
 		}
 
+		if { $k == "loss" } {
+			set loss [parse_value "loss" 0 1024]
+			continue
+		}
+
 		set norp [parse_value "retries" 0 7]
 	}
 
 	parse_empty
 
 	oss_issuecommand 0x08 \
-		[oss_setvalues [list $nodeid $worprl $worp $norp] "ap"]
+		[oss_setvalues [list $nodeid $worprl $worp $norp $loss] "ap"]
 }
 
 ###############################################################################
@@ -713,9 +725,9 @@ proc show_msg { code ref msg } {
 			variable ACKCODE
 			binary scan $msg su msg
 			if [info exists ACKCODE($msg)] {
-				oss_ttyout "<$ref>: $ACKCODE($msg)"
+				oss_out "<$ref>: $ACKCODE($msg)"
 			} else {
-				oss_ttyout "<$ref>: response code $msg"
+				oss_out "<$ref>: response code $msg"
 			}
 		}
 		return
@@ -924,7 +936,7 @@ proc show_msg_status { msg } {
 		append res "\n ... list truncated, data too short\n"
 	}
 
-	oss_ttyout $res
+	oss_out $res
 }
 
 proc show_msg_report { msg } {
@@ -965,7 +977,7 @@ proc show_msg_report { msg } {
 		append res [show_report_light data]
 	}
 
-	oss_ttyout $res
+	oss_out $res
 }
 
 proc get_u16 { bb } {
@@ -1157,7 +1169,7 @@ proc show_msg_motion { msg } {
 	lassign [oss_getvalues $msg "motion"] evt acc
 	lassign $acc x y z
 
-	oss_ttyout "Motion: ([format %5u $evt])\
+	oss_out "Motion: ([format %5u $evt])\
 		 \[A [to_f16 $x] [to_f16 $y] [to_f16 $z]\]"
 }
 
@@ -1227,23 +1239,49 @@ proc show_report_press { d cmp } {
 
 proc show_msg_ap { msg } {
 
-	lassign [oss_getvalues $msg "ap"] nodeid worprl nworp norp
+	lassign [oss_getvalues $msg "ap"] nodeid worprl nworp norp loss
 
 	set res "AP status:\n"
 	append res "  Node Id (-node):                   $nodeid\n"
 	append res "  WOR preamble length (-preamble):   $worprl\n"
 	append res "  Copies of WOR packet (-wake):      $nworp\n"
 	append res "  Copies of CMD packet (-retries):   $norp\n"
+	append res "  Loss (packets per 1024):           $loss\n"
 
-	oss_ttyout $res
+	oss_out $res
 }
 
 proc start_up { } {
 #
 # Send a dummy ap message to initialize the reference counter
 #
+	variable CTiming
+
 	# oss_dump -incoming -outgoing
 	oss_issuecommand 0x08 [oss_setvalues [list 0 0 0 0] "ap"]
+
+	set CTiming [clock milliseconds]
+}
+
+proc timing_out { } {
+
+	variable CTiming
+
+	set t $CTiming
+	set CTiming [clock milliseconds]
+	set s [expr { $CTiming / 1000 }]
+	set m [expr { $CTiming - ( $s * 1000 ) }]
+	set r [clock format $s -format "%H:%M:%S"]
+	append r [string range [format "%4.3f" [expr { $m / 1000.0 }]] 1 end]
+	append r " ("
+	append r [format "%4.3f" [expr { ($CTiming - $t) / 1000.0 }]]
+	append r ") -> "
+	return $r
+}
+
+proc oss_out { msg } {
+
+	oss_ttyout "[timing_out]$msg"
 }
 
 ###############################################################################
@@ -1272,5 +1310,5 @@ proc show_sblock { ref dat } {
 		incr sh 2
 	}
 
-	oss_ttyout "B: [format %10u $bn]\n$fm"
+	oss_out "B: [format %10u $bn]\n$fm"
 }

@@ -31,6 +31,10 @@ static word		PML;		// Length
 
 static command_ap_t	APS = { 1, 1024, 0, 2 };		// AP status
 
+// Debugging ==================================================================
+static word		FLoss = 0;
+// End debugging ==============================================================
+
 // ============================================================================
 
 static void led_hb () {
@@ -41,6 +45,10 @@ static void led_hb () {
 static void led_tt () {
 	// One longish blink on outgoing message
 	led_signal (0, 1, 768);
+}
+
+static void led_rx () {
+	led_signal (1, 1, 64);
 }
 
 // ============================================================================
@@ -106,6 +114,7 @@ static void handle_oss_command () {
 			}
 			done++;
 		}
+#if RADIO_WOR_MODE
 		if (pmt->worprl != WNONE) {
 			if (RFP.interval != (APS.worprl = pmt->worprl)) {
 				RFP.interval = pmt->worprl;
@@ -114,6 +123,7 @@ static void handle_oss_command () {
 			}
 			done++;
 		}
+#endif
 		if (pmt->nworp != BNONE) {
 			APS.nworp = pmt->nworp;
 			done++;
@@ -122,6 +132,14 @@ static void handle_oss_command () {
 			APS.norp = pmt->norp;
 			done++;
 		}
+
+		// Debugging ==================================================
+		if (pmt->loss != WNONE) {
+			FLoss = pmt->loss;
+			done++;
+		}
+		// End debugging ==============================================
+
 		if (done) {
 			oss_ack (ACK_OK);
 			LastRef = CMD->ref;
@@ -135,6 +153,9 @@ static void handle_oss_command () {
 			msghdr->code = message_ap_code;
 			msghdr->ref = CMD->ref;
 			memcpy (msg + 1, &APS, sizeof (message_ap_t));
+			// Debugging ==========================================
+			((message_ap_t*)(msg + 1)) -> loss = FLoss;
+			// End debugging ======================================
 			tcv_endp (msg);
 		}
 		led_tt ();
@@ -189,10 +210,16 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 //
 	address msg;
 
+	led_rx ();
 	if (code == MESSAGE_CODE_SBLOCK) {
 		if (mpl < STRM_NCODES * 4)
 			// Ignore garbage
 			return;
+
+		// Debugging ==================================================
+		if (FLoss && (rnd () & 0x3ff) < FLoss) return;
+		// End debugging ==============================================
+
 		pegstream_tally_block (ref, pkt);
 	} else if (code == MESSAGE_CODE_ETRAIN) {
 		if (mpl >= sizeof (streot_t))
@@ -201,12 +228,11 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 		return;
 	}
 
-	// Pass to OSS
-
-	if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2)) != NULL) {
+	// Pass to OSS, include the RSSI
+	if ((msg = tcv_wnp (WNONE, sd_uart, upl (mpl) + 2 + 2)) != NULL) {
 		((oss_hdr_t*)msg)->code = code;
 		((oss_hdr_t*)msg)->ref = ref;
-		memcpy (msg + (PKT_FRAME_OSS/2), pkt, mpl);
+		memcpy (msg + (PKT_FRAME_OSS/2), pkt, mpl + 2);
 		tcv_endp (msg);
 	}
 }
@@ -219,9 +245,7 @@ fsm root {
 
 		APS.nodeid = GROUP_ID;
 
-		// Indicates the AP is plugged in
-		led_init (2);
-		leds (0, 1);
+		led_signal (0, 4, 128);
 
 		phys_uart (1, OSS_PACKET_LENGTH, 0);
 

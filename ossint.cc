@@ -78,7 +78,6 @@ fsm ossint_sensor_status_sender {
 
 		pmt->sstat.size = sensing_status (
 			(byte*)(((word*)&(pmt->sstat.size)) + 1));
-
 		tcv_endpx (msg, YES);
 		finish;
 }
@@ -108,6 +107,7 @@ word ossint_set_radio (const command_radio_t *pmt, word pml) {
 	if (pmt->options > 3)
 		return ACK_PARAM;
 
+#if RADIO_WOR_MODE
 	if ((val = pmt->worintvl) != 0) {
 		// Keep it sane
 		if (val < 256)
@@ -119,13 +119,14 @@ word ossint_set_radio (const command_radio_t *pmt, word pml) {
 			RFP.interval = val;
 		}
 	}
+#endif
 
 	if ((val = pmt->offdelay) != 0) {
 		if (val < 20)
 			val = 20;
 		if (val != RFP.offdelay) {
 			mod = YES;
-			RFP.interval = val;
+			RFP.offdelay = val;
 		}
 	}
 

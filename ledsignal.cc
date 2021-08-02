@@ -1,11 +1,12 @@
 #include "ledsignal.h"
 
+#if N_SIGNAL_LEDS > 0
+
 typedef	struct {
 	word bdelay, nblinks;
 } __ledblink_t;
 
-static __ledblink_t *all_leds;
-static sint	   nleds;
+static __ledblink_t all_leds [N_SIGNAL_LEDS];
 
 fsm __sig_blinker (word led) {
 
@@ -35,7 +36,7 @@ void led_signal (word led, word n, word d) {
 
 	word sb;
 
-	if (led >= nleds)
+	if (led >= N_SIGNAL_LEDS)
 		// Play it safe
 		return;
 
@@ -80,18 +81,10 @@ void led_stop () {
 
 	sint i;
 
-if (crunning (__sig_blinker))
 	killall (__sig_blinker);
-	bzero (all_leds, nleds * sizeof (__ledblink_t));
-	for (i = 0; i < nleds; i++)
+	bzero (all_leds, sizeof (all_leds));
+	for (i = 0; i < N_SIGNAL_LEDS; i++)
 		leds (i, 0);
 }
 
-void led_init (sint nl) {
-
-	if ((all_leds = (__ledblink_t*) umalloc ((nleds = nl) *
-		sizeof (__ledblink_t))) == NULL)
-			syserror (ERESOURCE, "led");
-
-	led_stop ();
-}	
+#endif

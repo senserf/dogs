@@ -66,6 +66,8 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 	word ret;
 	address msg;
 
+// diag ("GOT: %d %d : %x", code, ref, par [0]);
+// udelay (300);
 	if (code == MESSAGE_CODE_STRACK) {
 		// Ignore ref
 		streaming_tack (ref, (byte*) par, pml);
@@ -78,6 +80,10 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		return;
 
 	LastRef = ref;
+
+	// 4 msecs of breathing space for the peg
+	ret = 2;
+	osscmn_rfcontrol (PHYSOPT_CAV, &ret);
 
 	switch (code) {
 
@@ -109,6 +115,7 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 				ret = ACK_NORES;
 				break;
 			}
+			// No ACK
 			return;
 
 		case command_sample_code:
@@ -205,9 +212,11 @@ fsm root (aword sflags) {
 
 	state RS_INIT:
 
+#if 0
 		if (sflags == 0)
 			// Start in hibernating state, wakeup on button
 			hibernate ();
+#endif
 #else
 
 fsm root {
@@ -215,10 +224,9 @@ fsm root {
 	state RS_INIT:
 
 #endif
-
-		led_init (1);
-
 		powerdown ();
+
+		led_signal (0, 4, 128);
 		// Initialize the interface in RF active state
 		osscmn_init ();
 

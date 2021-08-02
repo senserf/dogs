@@ -78,9 +78,14 @@ fsm sampling_corrector {
 			release;
 		}
 
+#if 0
 		s = (SampleSpace *
 			(((NextMinuteBoundary - SampleStartSecond) / 60) *
 				SamplesPerMinute)) / SamplesTaken;
+#endif
+		s = (SampleSpace * SamplesTaken) /
+			(((NextMinuteBoundary - SampleStartSecond) / 60) *
+				SamplesPerMinute);
 
 		SampleSpace = s > MAX_SAMPLE_SPACE ? MAX_SAMPLE_SPACE :
 			(s < MIN_SAMPLE_SPACE ? MIN_SAMPLE_SPACE : (word) s);

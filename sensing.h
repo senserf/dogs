@@ -14,11 +14,31 @@
 #include "sysio.h"
 #include "ossi.h"
 
+#if defined(__SMURPH__) || !defined(MPU9250_I2C_ADDRESS)
+// The SENSORTAG-specific sensors have to be emulated if we are not running on
+// the actual SENSORTAG device
+#define	EMULATE_SENSORS		1
+#else
+#define	EMULATE_SENSORS		0
+#endif
+
+#if EMULATE_SENSORS && !defined(__SMURPH__)
+// This means that we need the "emulation" headers from the sensor drivers, so
+// we pretend we are in VUEE while they are being included
+#define	__SMURPH__
+#define	__VUEE_fake__
+#endif
+
 #include "mpu9250.h"
 #include "obmicrophone.h"
 #include "bmp280.h"
 #include "hdc1000.h"
 #include "opt3001.h"
+
+#ifdef	__VUEE_fake__
+#undef	__SMURPH__
+#undef	__VUEE_fake__
+#endif
 
 #define	NUMBER_OF_SENSORS	5
 
@@ -133,10 +153,10 @@ word sensing_report (byte*, address);
 
 #define	sensing_all_off()	sensing_turn (0x00)
 
-#ifdef __SMURPH__
+#if EMULATE_SENSORS
 
 // ============================================================================
-// VUEE
+// Sensor emulation; will have to provide these functions
 // ============================================================================
 
 void read_mpu9250 (word, address);

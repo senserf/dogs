@@ -65,6 +65,7 @@ typedef struct {
 	word	worprl;
 	byte	nworp;
 	byte	norp;
+	word	loss;
 } command_ap_t;
 
 // ==================
@@ -108,6 +109,7 @@ typedef struct {
 	word	worprl;
 	byte	nworp;
 	byte	norp;
+	word	loss;
 } message_ap_t;
 
 

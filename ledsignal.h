@@ -9,12 +9,24 @@
 #ifndef __pg_ledsignal_h
 #define	__pg_ledsignal_h
 
-//+++ "ledsignal.cc"
-
 #include "sysio.h"
 
+#ifndef	N_SIGNAL_LEDS
+#define	N_SIGNAL_LEDS 0
+#endif
+
+#if N_SIGNAL_LEDS > 0
+
+//+++ "ledsignal.cc"
+
 void led_signal (word, word, word);
-void led_init (sint);
 void led_stop ();
+
+#else
+
+#define	led_signal(a,b,c)	CNOP
+#define	led_stop()		CNOP
+
+#endif
 
 #endif

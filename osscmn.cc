@@ -10,9 +10,11 @@
 
 cc1350_rfparams_t RFP = {
 	WOR_CYCLE,
+#if RADIO_WOR_MODE
 	RADIO_LINGER,
 	WOR_RSS,
 	WOR_PQI
+#endif
 };
 
 sint 	RFC;
@@ -131,6 +133,15 @@ void osscmn_rfcontrol (sint op, address pmt) {
 		}
 		// Fall through for OFF
 	}
+#else
+	// Real world
+#if !RADIO_WOR_MODE
+	if (op == PHYSOPT_OFF && pmt != NULL && pmt) {
+		// This is a WOR request, convert it to ON
+		tcv_control (RFC, PHYSOPT_RXON, NULL);
+		return;
+	}
 #endif
 	tcv_control (RFC, op, pmt);
+#endif
 };

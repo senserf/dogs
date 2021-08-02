@@ -114,6 +114,8 @@ static void fill_eot (address pkt) {
 
 fsm streaming_trainsender {
 
+	word train_space;
+
 	state ST_NEWTRAIN:
 
 		NCars = 0;
@@ -127,6 +129,7 @@ fsm streaming_trainsender {
 
 		if (NCars >= STRM_TRAIN_LENGTH) {
 			TSStat = STRM_TSSTAT_WACK;
+			train_space = STRM_MIN_TRAIN_SPACE;
 			sameas ST_ENDTRAIN;
 		}
 
@@ -170,8 +173,10 @@ fsm streaming_trainsender {
 			tcv_endpx (pkt, NO);
 		}
 
-		delay (STRM_TRAIN_SPACE, ST_ENDTRAIN);
+		delay (train_space, ST_ENDTRAIN);
 		when (TSender, ST_ENDTRAIN);
+		if (train_space < STRM_MAX_TRAIN_SPACE)
+			train_space++;
 }
 
 fsm streaming_generator {
@@ -226,12 +231,15 @@ void streaming_tack (byte ref, byte *ab, word plen) {
 #define	end_cb	do { if (cb == NULL) BTail = ta; } while (0)
 // ============================================================================
 
-	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain)
+	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain) {
 		// Just ignore
+// diag ("TACK bad");
 		return;
+	}
 
 	mp = 0;
 	rlen = plen;		// Remaining length
+// diag ("TACK %u", rlen);
 
 	// This is the starting setting of the block number reference; this
 	// cannot be a block to retain because it has not been indicated

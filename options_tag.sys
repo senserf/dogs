@@ -1,31 +1,36 @@
 //
 // CC1350_SENSORTAG
 //
-
-#define	RADIO_WOR_MODE			1
-#define	RADIO_OPTIONS			RADIO_OPTION_PXOPTIONS
-#define	RADIO_DEFAULT_POWER		7
-#define	RADIO_DEFAULT_BITRATE		3
-#define	RADIO_LBT_SENSE_TIME		1	/* ms */
-#define	RADIO_LBT_RSSI_THRESHOLD	70	/* RSS */
-#define	RADIO_LBT_MAX_TRIES		4
-#define	RADIO_LBT_MIN_BACKOFF		1
-#define	RADIO_LBT_BACKOFF_EXP		6	/* MIN, MIN+63 */
-#define	RADIO_LBT_BACKOFF_RX		3	/* MIN, MIN+7 */
-#define	RADIO_LBT_XMIT_SPACE		2	/* Inter-packet spacing */
-
 #undef	LEDS_BLINKING
 #undef	LEDS_DRIVER
-
-#define	LEDS_DRIVER		1
-// We do blinking our way
 #define	LEDS_BLINKING		0
+#define	LEDS_DRIVER		1
+#define	N_SIGNAL_LEDS		2	// 1
 
 // No UART
 #undef	UART_DRIVER
 #undef	UART_TCV
 #undef	DIAG_MESSAGES
-#define	UART_DRIVER		0
+#define	UART_DRIVER		1	// 0
 #define	UART_TCV		0
-#define	DIAG_MESSAGES		0
+#define	DIAG_MESSAGES		2	// 0
 
+// ============================================================================
+
+#define	RADIO_WOR_MODE			0 // 1
+#define	RADIO_OPTIONS			RADIO_OPTION_PXOPTIONS
+
+#define	RADIO_DEFAULT_POWER		7
+#define	RADIO_DEFAULT_BITRATE		3
+
+#if 1
+#define	RADIO_LBT_SENSE_TIME		1	/* ms */
+#define	RADIO_LBT_RSSI_THRESHOLD	70	/* RSS */
+#define	RADIO_LBT_MAX_TRIES		4
+#define	RADIO_LBT_MIN_BACKOFF		2
+#define	RADIO_LBT_MAX_BACKOFF		8
+#define	RADIO_RCV_MIN_BACKOFF		0
+#define	RADIO_RCV_MAX_BACKOFF		0
+#endif
+
+// ============================================================================

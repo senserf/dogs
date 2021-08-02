@@ -60,6 +60,12 @@
 #define	ACK_AP_TOOLONG		131
 
 #define	set_lbt(pkt,boo)	set_pxopts (pkt, 0, boo, RADIO_DEFAULT_POWER)
+
+#if (RADIO_OPTIONS & RADIO_OPTION_PXOPTIONS)
 #define	tcv_endpx(msg,boo)	do { set_lbt (msg, boo); tcv_endp (msg); } \
 					while (0)
+#else
+#define	tcv_endpx(msg,boo)	tcv_endp (msg)
+#endif
+
 #endif
