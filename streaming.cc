@@ -24,9 +24,9 @@ static	aword		TSender;
 static	byte		TSStat, LTrain;
 
 static inline lword encode (address data) {
-	return (((lword)(data [0] & 0xffc0)) << 22) |
-	       (((lword)(data [1] & 0xffc0)) << 12) |
-	       (((lword)(data [2] & 0xffc0)) <<  2) ;
+	return (((lword)(data [0] & 0xffc0)) << 16) |
+	       (((lword)(data [1] & 0xffc0)) <<  6) |
+	       (((lword)(data [2] & 0xffc0)) >>  4) ;
 }
 
 static void delete_front () {
@@ -98,17 +98,18 @@ static void fill_current_car (address pkt) {
 
 static void fill_eot (address pkt) {
 
-#define	pay	((streot_t*) pkt_payload (pkt))
+#define	pay	((message_etrain_t*) pkt_payload (pkt))
 
 	pkt_osshdr (pkt) -> code = MESSAGE_CODE_ETRAIN;
 	pkt_osshdr (pkt) -> ref = LTrain;
 
 	pay -> last = LastSent;
-
 	pay -> offset = (BHead == NULL || (BHead -> bn) > LastSent) ? 0 :
 		(word) (LastSent - BHead -> bn + 1);
 	// Note that offset == 0 means no blocks can be retransmitted (LastSent
 	// is below the head), 1 means head == LastSent
+	pay -> sspace = (byte) SampleSpace;
+	pay -> clock = (byte) seconds ();
 #undef pay
 }
 
@@ -166,8 +167,8 @@ fsm streaming_trainsender {
 			sameas ST_NEWTRAIN;
 
 		// Keep sending EOT packets waiting for an ACK
-		if ((pkt = tcv_wnp (ST_ENDTRAIN, RFC, sizeof (streot_t) +
-		    PKT_FRAME_ALL)) != NULL) {
+		if ((pkt = tcv_wnp (ST_ENDTRAIN, RFC,
+			sizeof (message_etrain_t) + PKT_FRAME_ALL)) != NULL) {
 
 			fill_eot (pkt);
 			tcv_endpx (pkt, NO);
@@ -186,6 +187,7 @@ fsm streaming_generator {
 		word data [3];
 
 		// We get precisely three value; accel is the only component
+
 		read_mpu9250 (WNONE, data);
 
 		if (CBuilt == NULL) {

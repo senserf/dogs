@@ -176,6 +176,15 @@ oss_command ap 0x08 {
 	word	loss;
 }
 
+oss_command mreg 0x09 {
+#
+# Debugging
+#
+	byte	what;
+	byte	regn;
+	byte	value;
+}
+
 #############################################################################
 #############################################################################
 
@@ -232,11 +241,25 @@ oss_message ap 0x08 {
 	word	loss;
 }
 
+oss_message mreg 0x09 {
+	blob	data;
+}
+
 oss_message sblock 0x80 {
 #
 # A streaming block
 #
 	lword	data [12];
+}
+
+oss_message etrain 0x81 {
+#
+# End of train
+#
+	lword	last;
+	word	offset;
+	byte	sspace;
+	byte	clock;
 }
 
 # streaming blocks interpreted separately (in a non-standard way)
@@ -350,6 +373,7 @@ set CMDS(stream)	"parse_cmd_stream"
 set CMDS(stop)		"parse_cmd_stop"
 set CMDS(status)	"parse_cmd_status"
 set CMDS(ap)		"parse_cmd_ap"
+set CMDS(mreg)		"parse_cmd_mreg"
 
 variable LASTCMD	""
 
@@ -661,6 +685,32 @@ proc parse_cmd_stop { } {
 	oss_issuecommand 0x07 [oss_setvalues [list 0] "stop"]
 }
 
+proc parse_cmd_mreg { } {
+
+	set tp [parse_selector]
+
+	if { $tp == "" } {
+		error "-read or -write"
+	}
+
+	set k [oss_keymatch $tp { "read" "write" }]
+
+	set reg [parse_value "reg number" 0 255]
+
+	if { $k == "read" } {
+		# reg number + optional length
+		if [catch { parse_value "size" 1 32 } siz] {
+			set siz 1
+		}
+		oss_issuecommand 0x09 [oss_setvalues [list 0 $reg $siz] "mreg"]
+		return
+	}
+
+	# write
+	set val [parse_value "value" 0 255]
+	oss_issuecommand 0x09 [oss_setvalues [list 1 $reg $val] "mreg"]
+}
+
 proc parse_cmd_ap { } {
 
 	# unused
@@ -735,6 +785,11 @@ proc show_msg { code ref msg } {
 
 	if { $code == 128 } {
 		show_sblock $ref $msg
+		return
+	}
+
+	if { $code == 129 } {
+		show_eot $ref $msg
 		return
 	}
 
@@ -1251,6 +1306,19 @@ proc show_msg_ap { msg } {
 	oss_out $res
 }
 
+proc show_msg_mreg { msg } {
+
+	lassign [oss_getvalues $msg "mreg"] data
+
+	set res ""
+
+	foreach b $data {
+		append res [format " %02x" $b]
+	}
+
+	oss_out $res
+}
+
 proc start_up { } {
 #
 # Send a dummy ap message to initialize the reference counter
@@ -1311,4 +1379,12 @@ proc show_sblock { ref dat } {
 	}
 
 	oss_out "B: [format %10u $bn]\n$fm"
+}
+
+proc show_eot { ref dat } {
+
+	lassign [oss_getvalues $dat "etrain"] last offset sspace sclock
+
+	oss_out "E: [format %10u $last] [format %5u $offset]\
+		 [format %3u $sspace] [format %3u $sclock]"
 }

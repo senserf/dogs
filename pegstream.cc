@@ -20,12 +20,28 @@ static lword alst;
 // 8-tuple)
 #define	bme(bo)	bmap [(bo) & STRM_MAP_MASK]
 
-static void trim_bitmap (lword bo) {
+static inline void shift_bitmap (lword by_this) {
+
+	word pi, ci;
+
+	// Previous base index
+	pi = bbase & STRM_MAP_MASK;
+	ci = (bbase += by_this) & STRM_MAP_MASK;
+
+	// Need to zero out the reclaimed area between pi and ci - 1
+	if (pi < ci) {
+		bzero (bmap + pi, ci - pi);
+	} else {
+		bzero (bmap + pi, STRM_MAP_SIZE - pi);
+		bzero (bmap, ci);
+	}
+}
+
+static void extend_bitmap (lword bo) {
 //
-// Adjust the bitmap to accommodate the most recent block number (/8)
+// Adjust the bitmap to accommodate a new tail block number
 //
 	lword ne;
-	word pi, ci;
 
 	// Both bo and bbase are 8-tuple indexes
 	if (bo - bbase >= STRM_MAP_SIZE) {
@@ -40,17 +56,25 @@ static void trim_bitmap (lword bo) {
 			return;
 		}
 
-		// Previous base index
-		pi = bbase & STRM_MAP_MASK;
-		ci = (bbase += ne) & STRM_MAP_MASK;
+		shift_bitmap (ne);
+	}
+}
 
-		// Need to zero out the reclaimed area between pi and ci - 1
-		if (pi < ci) {
-			bzero (bmap + pi, ci - pi);
-		} else {
-			bzero (bmap + pi, STRM_MAP_SIZE - pi);
-			bzero (bmap, ci);
+static inline void shrink_bitmap (lword bo) {
+//
+// Adjust the bitmap to remove the useless head
+//
+	lword ne;
+
+	if ((bo >>= 3) > bbase) {
+		ne = bo - bbase;
+		if (ne >= STRM_MAP_SIZE) {
+			bzero (bmap, STRM_MAP_SIZE);
+			bbase = bo;
+			return;
 		}
+
+		shift_bitmap (ne);
 	}
 }
 
@@ -63,7 +87,7 @@ static inline void add_to_map (lword from, lword upto) {
 
 	bo = from >> 3;
 	bb = from & 0x7;
-	trim_bitmap (bo);
+	extend_bitmap (bo);
 
 	do {
 		bme (bo) |= (1 << bb);
@@ -73,7 +97,7 @@ static inline void add_to_map (lword from, lword upto) {
 		if (bb == 7) {
 			bo++;
 			bb = 0;
-			trim_bitmap (bo);
+			extend_bitmap (bo);
 		} else {
 			bb++;
 		}
@@ -89,9 +113,12 @@ static inline void remove_from_map (lword bn) {
 		bme (bo) &= ~(1 << (bn & 0x7));
 }
 
-static inline void init_ack () {
+static inline void init_ack (word offset) {
 
 	aend = 0;
+	if (lsent >= offset)
+		shrink_bitmap ((lsent - offset + 1) >> 3);
+	// Initial reference for offsets
 	alst = (lsent < STRM_MAX_BLOCKSPAN) ? 0 : lsent - STRM_MAX_BLOCKSPAN;
 	aibm = -1;
 }
@@ -205,9 +232,9 @@ void pegstream_eot (byte ref, address pkt) {
 	word of;
 
 	// Last sent
-	lsent = ((streot_t*) pkt) -> last;
+	lsent = ((message_etrain_t*) pkt) -> last;
 	// Back offset to the earliest available block
-	of = ((streot_t*) pkt) -> offset;
+	of = ((message_etrain_t*) pkt) -> offset;
 // diag ("EOT %u %u", (word) lsent, of);
 
 	// A sanity check
@@ -220,7 +247,7 @@ void pegstream_eot (byte ref, address pkt) {
 	}
 
 	// Build the ACK packet
-	init_ack ();
+	init_ack (of);
 
 	for (bn = bbase, bo = lsent >> 3; bn <= bo; bn++) {
 		// bn indexes 8-tuples, quickly skip zero entries

@@ -87,14 +87,6 @@ struct strblk_t {
 	lword		block [STRM_NCODES];
 };
 
-typedef	struct {
-//
-// End of train packet payload
-//
-	lword last;	// The last transmitted block number
-	word offset;	// The backward offset to the first "askable" block
-} streot_t;
-
 // ============================================================================
 
 extern byte	RadioOn, LastRef;

@@ -68,6 +68,13 @@ typedef struct {
 	word	loss;
 } command_ap_t;
 
+#define	command_mreg_code	9
+typedef struct {
+	byte	what;
+	byte	regn;
+	byte	value;
+} command_mreg_t;
+
 // ==================
 // Message structures
 // ==================
@@ -76,6 +83,14 @@ typedef struct {
 typedef struct {
 	lword	data [12];
 } message_sblock_t;
+
+#define	message_etrain_code	129
+typedef struct {
+	lword	last;
+	word	offset;
+	byte	sspace;
+	byte	clock;
+} message_etrain_t;
 
 #define	message_status_code	3
 typedef struct {
@@ -111,6 +126,11 @@ typedef struct {
 	byte	norp;
 	word	loss;
 } message_ap_t;
+
+#define	message_mreg_code	9
+typedef struct {
+	blob	data;
+} message_mreg_t;
 
 
 // ===================================

@@ -5,7 +5,7 @@
 #undef	LEDS_DRIVER
 #define	LEDS_BLINKING		0
 #define	LEDS_DRIVER		1
-#define	N_SIGNAL_LEDS		2	// 1
+#define	N_SIGNAL_LEDS		1	// 1
 
 // No UART
 #undef	UART_DRIVER
@@ -13,7 +13,7 @@
 #undef	DIAG_MESSAGES
 #define	UART_DRIVER		1	// 0
 #define	UART_TCV		0
-#define	DIAG_MESSAGES		2	// 0
+#define	DIAG_MESSAGES		1	// 0
 
 // ============================================================================
 

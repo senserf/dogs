@@ -61,6 +61,38 @@ fsm delayed_switch (byte opn) {
 
 // ============================================================================
 
+void do_mreg (const command_mreg_t *par, word pml) {
+
+	byte a, r;
+	word bsize;
+	address msg;
+	message_mreg_t *pmt;
+
+	if (pml < 3)
+		return;
+
+	if (par->what) {
+		// Write
+		mpu9250_wrega (par->regn, par->value);
+		return;
+	}
+
+	if (par->value < 1 || par->value > 32)
+		// A sanity check
+		return;
+
+	if ((msg = osscmn_xpkt (message_mreg_code, LastRef,
+	   sizeof (message_mreg_t) + par->value)) == NULL)
+		return;
+
+	pmt = (message_mreg_t*) pkt_payload (msg);
+	pmt->data.size = par->value;
+	mpu9250_rregan (par->regn, pmt->data.content, par->value);
+	tcv_endpx (msg, YES);
+}
+
+// ============================================================================
+
 void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 	word ret;
@@ -146,7 +178,13 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 			} else
 				ret = ACK_VOID;
 			break;
-	
+
+		case command_mreg_code:
+
+			do_mreg ((const command_mreg_t*) par, pml);
+			ret = ACK_OK;
+			break;
+
 		default:
 
 			ret = ACK_COMMAND;

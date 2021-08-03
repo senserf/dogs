@@ -222,10 +222,9 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 
 		pegstream_tally_block (ref, pkt);
 	} else if (code == MESSAGE_CODE_ETRAIN) {
-		if (mpl >= sizeof (streot_t))
-			pegstream_eot (ref, pkt);
-		// Never pass this to the OSS
-		return;
+		if (mpl < sizeof (message_etrain_t))
+			return;
+		pegstream_eot (ref, pkt);
 	}
 
 	// Pass to OSS, include the RSSI

@@ -69,7 +69,7 @@ fsm sampling_corrector {
 
 	state STC_WAIT_A_MINUTE:
 
-		lword s;
+		lword s, t, p;
 
 		// Wait until hit the next minute boundary
 		if ((s = seconds ()) < NextMinuteBoundary) {
@@ -78,17 +78,15 @@ fsm sampling_corrector {
 			release;
 		}
 
-#if 0
-		s = (SampleSpace *
-			(((NextMinuteBoundary - SampleStartSecond) / 60) *
-				SamplesPerMinute)) / SamplesTaken;
-#endif
-		s = (SampleSpace * SamplesTaken) /
-			(((NextMinuteBoundary - SampleStartSecond) / 60) *
-				SamplesPerMinute);
+		p = ((NextMinuteBoundary - SampleStartSecond) / 60) *
+				SamplesPerMinute;
 
-		SampleSpace = s > MAX_SAMPLE_SPACE ? MAX_SAMPLE_SPACE :
-			(s < MIN_SAMPLE_SPACE ? MIN_SAMPLE_SPACE : (word) s);
+		t = (SampleSpace * SamplesTaken) / p;
+
+// diag ("SC: %lu %lu->%lu %u->%u", s, SamplesTaken, p, SampleSpace, t);
+
+		SampleSpace = t > MAX_SAMPLE_SPACE ? MAX_SAMPLE_SPACE :
+			(t < MIN_SAMPLE_SPACE ? MIN_SAMPLE_SPACE : (word) t);
 
 		NextMinuteBoundary += 60;
 
