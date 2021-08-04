@@ -236,7 +236,7 @@ static void sensor_on_mpu9250 () {
 			options |= MPU9250_SEN_TEMP;
 	}
 
-	mpu9250_on (options,
+	mpu9250_on ((lword) options | 0x10010000,
 		scaled_option (mpu9250_thresholds, mpu9250_conf [1]));
 
 	bzero (&mpu9250_desc, sizeof (mpu9250_desc));

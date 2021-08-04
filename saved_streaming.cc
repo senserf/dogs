@@ -219,15 +219,34 @@ fsm streaming_generator {
 	state ST_TAKE:
 
 		word data [3];
+byte r;
 
-		read_mpu9250 (WNONE, data);
+		// We get precisely three value; accel is the only component
+
+// mpu9250_rregan (MPU9250_REG_INT_STATUS, &r, 1);
+// diag ("ST: %x %x", (word) GPIO_readDio (IOID_7), r);
+#if 0
+		if ((r & 1)) {
+#endif
+		if (GPIO_readDio (IOID_7)) {
+			read_mpu9250 (WNONE, data);
+		} else {
+mpu9250_clear;
+			when (&mpu9250_status, ST_TAKE);
+			_BIS (mpu9250_status, MPU9250_STATUS_WAIT);
+			mpu9250_enable;
+// diag ("WAIT: %x", GPIO_readDio (IOID_7));
+			if (GPIO_readDio (IOID_7))
+				sameas ST_TAKE;
+			release;
+		}
 
 		if (CBuilt == NULL) {
 			// Next buffer
 			CBuilt = (strblk_t*) umalloc (sizeof (strblk_t));
 			if (CBuilt == NULL)
 				// We have to be smarter than this
-				sameas ST_WAIT;
+				sameas ST_TAKE;
 			CFill = 0;
 		}
 		
@@ -239,11 +258,7 @@ fsm streaming_generator {
 			add_current ();
 		}
 
-	initial state ST_WAIT:
-
-// To emulate properly
-		wait_sensor (SENSOR_MPU9250, ST_TAKE);
-		// release;	// Not needed
+		sameas ST_TAKE;
 }
 
 void streaming_tack (byte ref, byte *ab, word plen) {
