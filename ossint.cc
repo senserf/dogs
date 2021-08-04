@@ -96,42 +96,11 @@ void ossint_toggle_radio () {
 
 word ossint_set_radio (const command_radio_t *pmt, word pml) {
 
-	word val;
-	byte mod, ope;
-
-	if (pml < 5)
+	if (pml < 1)
 		return ACK_LENGTH;
-
-	mod = NO;
 
 	if (pmt->options > 3)
 		return ACK_PARAM;
-
-#if RADIO_WOR_MODE
-	if ((val = pmt->worintvl) != 0) {
-		// Keep it sane
-		if (val < 256)
-			val = 256;
-		else if (val > 8192)
-			val = 8192;
-		if (val != RFP.interval) {
-			mod = YES;
-			RFP.interval = val;
-		}
-	}
-#endif
-
-	if ((val = pmt->offdelay) != 0) {
-		if (val < 20)
-			val = 20;
-		if (val != RFP.offdelay) {
-			mod = YES;
-			RFP.offdelay = val;
-		}
-	}
-
-	if (mod)
-		tcv_control (RFC, PHYSOPT_SETPARAMS, (address)&RFP);
 
 	runfsm delayed_switch (pmt->options);
 

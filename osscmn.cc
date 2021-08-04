@@ -9,11 +9,11 @@
 #include "osscmn.h"
 
 cc1350_rfparams_t RFP = {
-	WOR_CYCLE,
+	RADIO_DEFAULT_OFFDELAY,
 #if RADIO_WOR_MODE
-	RADIO_LINGER,
-	WOR_RSS,
-	WOR_PQI
+	RADIO_DEFAULT_WOR_INTERVAL,
+	RADIO_DEFAULT_WOR_RSSI,
+	YES
 #endif
 };
 
@@ -99,7 +99,7 @@ void osscmn_init () {
 	// In this app, the role of NETID is played by the host Id
 	sid = GROUP_ID;
 	osscmn_rfcontrol (PHYSOPT_SETSID, &sid);
-	osscmn_rfcontrol (PHYSOPT_SETPARAMS, (address)&RFP);
+	// osscmn_rfcontrol (PHYSOPT_SETPARAMS, (address)&RFP);
 
 	runfsm radio_receiver;
 

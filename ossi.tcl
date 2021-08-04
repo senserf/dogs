@@ -116,9 +116,6 @@ oss_command radio 0x02 {
 #
 # Query or set the device status
 #
-#	0 - off, 1 - WOR, 2 - on, 3 - hibernate
-	word	offdelay;
-	word	worintvl;
 	byte	options;
 }
 
@@ -165,12 +162,10 @@ oss_command ap 0x08 {
 #
 	# Node ID (setup Id)
 	word	nodeid;
-	# WOR setting for the interval (preamble length)
-	word	worprl;
 	# Number of packets to send as wake packets
-	byte	nworp;
+	byte	nwake;
 	# Packet retry count
-	byte	norp;
+	byte	nretr;
 	# Packet loss rate (debugging)
 	word	loss;
 }
@@ -234,9 +229,8 @@ oss_message ap 0x08 {
 # To be extended later
 #
 	word	nodeid;
-	word	worprl;
-	byte	nworp;
-	byte	norp;
+	byte	nwake;
+	byte	nretr;
 	word	loss;
 }
 
@@ -556,24 +550,11 @@ proc parse_cmd_radio { } {
 	} else {
 		# WOR
 		set opt 1
-		set ofd [oss_parse -skip -number -return 1]
-		if { $ofd != "" } {
-			if { $tp < 128 || $tp > 65535 } {
-				error "off delay must be between 128 and 65535"
-			}
-			set win [oss_parse -skip -number -return 1]
-			if { $win != "" } {
-				if { $win < 128 || $win > 4096 } {
-					error "WOR interval must be between \
-						128 and 4096"
-				}
-			}
-		}
 	}
 
 	parse_empty
 
-	oss_issuecommand 0x02 [oss_setvalues [list $ofd $win $opt] "radio"]
+	oss_issuecommand 0x02 [oss_setvalues [list $opt] "radio"]
 }
 
 proc parse_cmd_status { } {
@@ -713,10 +694,9 @@ proc parse_cmd_ap { } {
 
 	# unused
 	set nodeid 0xFFFF
-	set worprl 0xFFFF
 	set loss 0xFFFF
-	set worp 0xFF
-	set norp 0xFF
+	set nwake 0xFF
+	set nretr 0xFF
 
 	while 1 {
 
@@ -725,8 +705,7 @@ proc parse_cmd_ap { } {
 			break
 		}
 
-		set k [oss_keymatch $tp { "node" "wake" "retries" "preamble"
-			"loss" }]
+		set k [oss_keymatch $tp { "node" "wake" "retries" "loss" }]
 
 		if [info exists handled($k)] {
 			error "duplicate -$k"
@@ -740,12 +719,7 @@ proc parse_cmd_ap { } {
 		}
 
 		if { $k == "wake" } {
-			set worp [parse_value "-wake" 0 3]
-			continue
-		}
-
-		if { $k == "preamble" } {
-			set worprl [parse_value "preamble" 256 4096]
+			set nwake [parse_value "-wake" 0 3]
 			continue
 		}
 
@@ -754,13 +728,13 @@ proc parse_cmd_ap { } {
 			continue
 		}
 
-		set norp [parse_value "retries" 0 7]
+		set nretr [parse_value "retries" 0 7]
 	}
 
 	parse_empty
 
 	oss_issuecommand 0x08 \
-		[oss_setvalues [list $nodeid $worprl $worp $norp $loss] "ap"]
+		[oss_setvalues [list $nodeid $nwake $nretr $loss] "ap"]
 }
 
 ###############################################################################
@@ -1286,13 +1260,12 @@ proc show_report_press { d cmp } {
 
 proc show_msg_ap { msg } {
 
-	lassign [oss_getvalues $msg "ap"] nodeid worprl nworp norp loss
+	lassign [oss_getvalues $msg "ap"] nodeid nwake nretr loss
 
 	set res "AP status:\n"
 	append res "  Node Id (-node):                   $nodeid\n"
-	append res "  WOR preamble length (-preamble):   $worprl\n"
-	append res "  Copies of WOR packet (-wake):      $nworp\n"
-	append res "  Copies of CMD packet (-retries):   $norp\n"
+	append res "  Copies of wake packet (-wake):     $nwake\n"
+	append res "  Copies of cmd packet (-retries):   $nretr\n"
 	append res "  Loss (packets per 1024):           $loss\n"
 
 	oss_out $res

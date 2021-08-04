@@ -29,7 +29,7 @@ static oss_hdr_t	*CMD;		// Current command ...
 static address		PMT;		// ... and its payload
 static word		PML;		// Length
 
-static command_ap_t	APS = { 1, 1024, 0, 2 };		// AP status
+static command_ap_t	APS = { 1, 0, 2, 0 };		// AP status
 
 // Debugging ==================================================================
 static word		FLoss = 0;
@@ -114,22 +114,12 @@ static void handle_oss_command () {
 			}
 			done++;
 		}
-#if RADIO_WOR_MODE
-		if (pmt->worprl != WNONE) {
-			if (RFP.interval != (APS.worprl = pmt->worprl)) {
-				RFP.interval = pmt->worprl;
-				osscmn_rfcontrol (PHYSOPT_SETPARAMS,
-					(address)&RFP);
-			}
+		if (pmt->nwake != BNONE) {
+			APS.nwake = pmt->nwake;
 			done++;
 		}
-#endif
-		if (pmt->nworp != BNONE) {
-			APS.nworp = pmt->nworp;
-			done++;
-		}
-		if (pmt->norp != BNONE) {
-			APS.norp = pmt->norp;
+		if (pmt->nretr != BNONE) {
+			APS.nretr = pmt->nretr;
 			done++;
 		}
 
@@ -176,32 +166,36 @@ static void handle_oss_command () {
 		pegstream_init ();
 
 #ifndef	__SMURPH__
+#if RADIO_WOR_MODE
 	// No WOR in VUEE
-	for (i = 0; i < APS.nworp; i++) {
-		// This is executed if WOR wakeup is set, nworp times
+	for (i = 0; i < APS.nwake; i++) {
+		// This is executed if WOR wakeup is set, nwake times
 		if ((msg = tcv_wnpu (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
 		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
 		tcv_endpx (msg, NO);
 	}
 #endif
+#endif
 	i = 0;
 	led_tt ();
 	do {
 #ifndef	__SMURPH__
-		if (APS.norp == 0 && APS.nworp != 0)
+#if RADIO_WOR_MODE
+		if (APS.nretr == 0 && APS.nwake != 0)
 			// WOR wakeup has been sent, and we don't want to
 			// force regular packets on top of it
 			return;
 #endif
-		// At least once if APS.nworp == 0, ragrdless of the setting of
-		// norp
+#endif
+		// At least once if APS.nwake == 0, ragrdless of the setting of
+		// nretr
 		if ((msg = tcv_wnp (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
 		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
 		tcv_endpx (msg, YES);
 		i++;
-	} while (i < APS.norp);
+	} while (i < APS.nretr);
 }
 
 void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {

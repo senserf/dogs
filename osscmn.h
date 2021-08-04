@@ -16,13 +16,6 @@
 #include "tcvphys.h"
 #include "plug_null.h"
 
-
-// RF params (mutable)
-#define	WOR_CYCLE		1024			// 1 second
-#define	RADIO_LINGER		(5 * 1024)		// 5 seconds
-#define	WOR_RSS			20
-#define	WOR_PQI			YES
-
 #define	RADIO_MODE_HIBERNATE	3
 #define	RADIO_MODE_ON		2
 #define	RADIO_MODE_WOR		1

@@ -29,8 +29,6 @@ typedef struct {
 
 #define	command_radio_code	2
 typedef struct {
-	word	offdelay;
-	word	worintvl;
 	byte	options;
 } command_radio_t;
 
@@ -62,9 +60,8 @@ typedef struct {
 #define	command_ap_code	8
 typedef struct {
 	word	nodeid;
-	word	worprl;
-	byte	nworp;
-	byte	norp;
+	byte	nwake;
+	byte	nretr;
 	word	loss;
 } command_ap_t;
 
@@ -88,8 +85,7 @@ typedef struct {
 typedef struct {
 	lword	last;
 	word	offset;
-	byte	sspace;
-	byte	clock;
+	word	clock;
 } message_etrain_t;
 
 #define	message_status_code	3
@@ -121,9 +117,8 @@ typedef struct {
 #define	message_ap_code	8
 typedef struct {
 	word	nodeid;
-	word	worprl;
-	byte	nworp;
-	byte	norp;
+	byte	nwake;
+	byte	nretr;
 	word	loss;
 } message_ap_t;
 
