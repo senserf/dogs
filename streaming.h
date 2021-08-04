@@ -15,7 +15,7 @@
 #include "sensing.h"
 #include "sampling.h"
 
-word streaming_start (const command_sample_t*, word);
+word streaming_start ();
 void streaming_stop ();
 void streaming_tack (byte, byte*, word);
 

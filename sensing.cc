@@ -37,6 +37,9 @@ static const word mpu9250_rates [] = {
 
 static const word mpu9250_thresholds [] = { 0, 8, 16, 24, 32, 48, 64, 128 };
 
+// The base rate looks like 2048 (it is 1024, we have to do something about it)
+static const word mpu9250_datarates [] = { 127, 63, 31, 15, 11, 7, 5, 3 };
+
 static const word mpu9250_bandwidth [] = {
 	MPU9250_LPF_5,
 	MPU9250_LPF_10,
@@ -66,7 +69,16 @@ static const byte mpu9250_desc_length [] = {
 	0, 6, 6, 12, 6, 12, 12, 18, 2, 8, 8, 14, 8, 14, 14, 20, 2
 };
 
-static byte mpu9250_conf [] = { NO, 4, 4, 6, 3, 1, NO };
+// 0 event: 0, 1, 2 (none, motion, dataready)
+// 1 threshold				
+// 2 rate
+// 3 accuracy
+// 4 bandwidth
+// 5 components
+// ============
+// 6 report
+// 7 datarate
+static byte mpu9250_conf [] = { 0, 4, 4, 6, 3, 1, NO, 4 };
 
 mpu9250_desc_t mpu9250_desc;
 
@@ -185,8 +197,8 @@ static word scaled_option (const word *t, byte v) {
 fsm mpu9250_sampler {
 //
 // This is used for detecting motion events; otherwise, the sensor is sampled
-// at the moment of report. The FSM can only be running if mpu9250_desc.motion
-// is nonzero.
+// at the moment of report. The FSM can only be running if mpu9250_desc.evtype
+// is 1.
 //
 	state MP_MOTION:
 
@@ -196,7 +208,9 @@ fsm mpu9250_sampler {
 
 		// The number of motion events
 		mpu9250_desc.motion_events ++;
-		ossint_motion_event (values, mpu9250_desc.motion_events);
+		if (mpu9250_desc.evtype & 0x80)
+			ossint_motion_event (values,
+				mpu9250_desc.motion_events);
 
 	initial state MP_LOOP:
 
@@ -206,46 +220,63 @@ fsm mpu9250_sampler {
 
 static void sensor_on_mpu9250 () {
 
-	word options;
+	lword options;
 
 	if (mpu9250_active)
 		// The sensor is on, do nothing
 		return;
 
+	bzero (&mpu9250_desc, sizeof (mpu9250_desc));
+
 	options = scaled_option (mpu9250_rates, mpu9250_conf [2]) |
 		  scaled_option (mpu9250_accuracy, mpu9250_conf [3]) |
 		  scaled_option (mpu9250_bandwidth, mpu9250_conf [4]);
 
-	if (mpu9250_conf [0]) {
+	// Enforce sanity
+	if (mpu9250_conf [5] > 0xf)
+		mpu9250_conf [5] = 0;
+
+	// Make sense of the event option
+	if ((mpu9250_conf [0] & 0x02)) {
+		// Motion detect
+		mpu9250_desc.evtype = 1;
 		options |= MPU9250_LP_MOTION_DETECT | MPU9250_SEN_ACCEL;
-		// This is a special configuration of components
+		// Force the special configuration of components
 		mpu9250_conf [5] = 0x10;
+	} else if (mpu9250_conf [0] & 0x04) {
+		// Sync data read
+		mpu9250_desc.evtype = 2;
+		options |= MPU9250_LP_SYNC_READ;
 	} else {
-		if (mpu9250_conf [5] == 0 || mpu9250_conf [5] > 0xf) { 
-			// Make sure there is at least one component, i.e.,
-			// accel, for sanity
-			mpu9250_conf [5] = 1;
-		}
-		if ((mpu9250_conf [5] & 1) || mpu9250_conf [0])
-			options |= MPU9250_SEN_ACCEL;
-		if (mpu9250_conf [5] & 2)
-			options |= MPU9250_SEN_GYRO;
-		if (mpu9250_conf [5] & 4)
-			options |= MPU9250_SEN_COMPASS;
-		if (mpu9250_conf [5] & 8)
-			options |= MPU9250_SEN_TEMP;
+		// None
+		mpu9250_desc.evtype = 0;
 	}
 
-	mpu9250_on ((lword) options | 0x10010000,
-		scaled_option (mpu9250_thresholds, mpu9250_conf [1]));
+	if (mpu9250_conf [5] == 0) {
+		// Make sure there is at least one component, i.e., accel
+		mpu9250_conf [5] = 1;
+	}
 
-	bzero (&mpu9250_desc, sizeof (mpu9250_desc));
+	if (mpu9250_conf [5] & 1)
+		options |= MPU9250_SEN_ACCEL;
+	if (mpu9250_conf [5] & 2)
+		options |= MPU9250_SEN_GYRO;
+	if (mpu9250_conf [5] & 4)
+		options |= MPU9250_SEN_COMPASS;
+	if (mpu9250_conf [5] & 8)
+		options |= MPU9250_SEN_TEMP;
 
-	if (mpu9250_conf [0]) {
-		mpu9250_desc . motion = 1;
+	// Include sampling rate
+	options |= ((lword) scaled_option (mpu9250_datarates,
+		mpu9250_conf [7])) << 24;
+
+	mpu9250_on (options, scaled_option (mpu9250_thresholds,
+		mpu9250_conf [1]));
+
+	if (mpu9250_desc.evtype == 1) {
 		if (mpu9250_conf [6])
 			// Event reports on motion
-			mpu9250_desc . motion |= 2;
+			mpu9250_desc . evtype |= 0x80;
 		// Start the sampler to collect (and optionally report) motion
 		// events
 		if (!running (mpu9250_sampler))
@@ -705,6 +736,12 @@ word sensing_report (byte *where, address mask) {
 static byte les_value = 0;
 static void rds (word st, word sn, address ret)	{ *ret = (word)(les_value++); }
 #endif
+
+void ready_mpu9250 (word st) {
+
+	delay (scaled_option (mpu9250_datarates, mpu9250_conf [7]) + 1, st);
+	release;
+}
 
 void read_mpu9250 (word st, address ret) {
 

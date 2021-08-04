@@ -235,7 +235,6 @@ void pegstream_eot (byte ref, address pkt) {
 	lsent = ((message_etrain_t*) pkt) -> last;
 	// Back offset to the earliest available block
 	of = ((message_etrain_t*) pkt) -> offset;
-// diag ("EOT %u %u", (word) lsent, of);
 
 	// A sanity check
 	if (lsent < lrcvd || of > lsent)

@@ -108,8 +108,7 @@ static void fill_eot (address pkt) {
 		(word) (LastSent - BHead -> bn + 1);
 	// Note that offset == 0 means no blocks can be retransmitted (LastSent
 	// is below the head), 1 means head == LastSent
-	pay -> sspace = (byte) SampleSpace;
-	pay -> clock = (byte) seconds ();
+	pay -> clock = (word) seconds ();
 #undef pay
 }
 
@@ -180,40 +179,6 @@ fsm streaming_trainsender {
 			train_space++;
 }
 
-#if 0
-fsm streaming_generator {
-
-	state ST_TAKE:
-
-		word data [3];
-
-		// We get precisely three value; accel is the only component
-
-		read_mpu9250 (WNONE, data);
-
-		if (CBuilt == NULL) {
-			// Next buffer
-			CBuilt = (strblk_t*) umalloc (sizeof (strblk_t));
-			if (CBuilt == NULL)
-				// We have to be smarter than this
-				sameas ST_WAIT;
-			CFill = 0;
-		}
-		
-		CBuilt -> block [CFill++] = encode (data);
-		SamplesTaken++;
-
-		if (CFill == STRM_NCODES) {
-			// This sets CBuilt to NULL and so on
-			add_current ();
-		}
-
-	state ST_WAIT:
-
-		delay (SampleSpace, ST_TAKE);
-}
-#endif
-
 fsm streaming_generator {
 
 	state ST_TAKE:
@@ -232,7 +197,6 @@ fsm streaming_generator {
 		}
 		
 		CBuilt -> block [CFill++] = encode (data);
-		SamplesTaken++;
 
 		if (CFill == STRM_NCODES) {
 			// This sets CBuilt to NULL and so on
@@ -241,9 +205,7 @@ fsm streaming_generator {
 
 	initial state ST_WAIT:
 
-// To emulate properly
-		wait_sensor (SENSOR_MPU9250, ST_TAKE);
-		// release;	// Not needed
+		ready_mpu9250 (ST_TAKE);
 }
 
 void streaming_tack (byte ref, byte *ab, word plen) {
@@ -269,13 +231,11 @@ void streaming_tack (byte ref, byte *ab, word plen) {
 
 	if (TSStat != STRM_TSSTAT_WACK || ref != LTrain) {
 		// Just ignore
-// diag ("TACK bad");
 		return;
 	}
 
 	mp = 0;
 	rlen = plen;		// Remaining length
-// diag ("TACK %u", rlen);
 
 	// This is the starting setting of the block number reference; this
 	// cannot be a block to retain because it has not been indicated
@@ -381,17 +341,15 @@ end_ack:
 #undef	end_cb
 }
 
-word streaming_start (const command_sample_t *pmt, word pml) {
+word streaming_start () {
 //
 // Assume same request format as for sampling (just the rate for now)
 //
 	if (Status == STATUS_SAMPLING)
 		return ACK_BUSY;
 
-	if (pml < 2)
-		return ACK_LENGTH;
-
-	if (!mpu9250_active || mpu9250_desc . components != 1)
+	if (!mpu9250_active || mpu9250_desc . components != 1 ||
+	    mpu9250_desc . evtype != 2)
 		// The only legit component is the accel; we expect exactly
 		// 3 values from the sensor
 		return ACK_CONFIG;
@@ -400,21 +358,9 @@ word streaming_start (const command_sample_t *pmt, word pml) {
 		// Clear everything; we probably shouldn't be restarting
 		streaming_stop ();
 
-	if ((SamplesPerMinute = pmt->spm) == 0)
-		// This is the default: one sample per second
-		SamplesPerMinute = 60;
-	else if (SamplesPerMinute > MAX_SAMPLES_PER_MINUTE)
-		SamplesPerMinute = MAX_SAMPLES_PER_MINUTE;
+	LastGenerated = 0;
 
-	// Calculate a rough estimate of the inter-sample interval in msecs;
-	// we will be adjusting it to try to keep the long-term rate in samples
-	// per minute as close to the target as possible
-
-	SampleSpace = (60 * 1024) / SamplesPerMinute;
-	LastGenerated = SamplesTaken = 0;
-	SampleStartSecond = seconds ();
-
-	if (runfsm streaming_generator && runfsm sampling_corrector &&
+	if (runfsm streaming_generator &&
 	    (TSender = runfsm streaming_trainsender)) {
 		Status = STATUS_STREAMING;
 		LTrain = 0;
@@ -431,7 +377,6 @@ void streaming_stop () {
 		return;
 
 	killall (streaming_generator);
-	killall (sampling_corrector);
 	killall (streaming_trainsender);
 
 	if (CBuilt) {

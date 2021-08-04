@@ -98,8 +98,6 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 	word ret;
 	address msg;
 
-// diag ("GOT: %d %d : %x", code, ref, par [0]);
-// udelay (300);
 	if (code == MESSAGE_CODE_STRACK) {
 		// Ignore ref
 		streaming_tack (ref, (byte*) par, pml);
@@ -160,8 +158,7 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_stream_code:
 
 			// Start streaming
-			ret = streaming_start ((const command_sample_t*) par,
-				pml);
+			ret = streaming_start ();
 			if (ret == ACK_OK)
 				// Don't send the ACK, the train is coming,
 				// just return

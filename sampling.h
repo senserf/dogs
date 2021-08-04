@@ -25,8 +25,8 @@
 #define	STATUS_SAMPLING		1
 #define	STATUS_STREAMING	2
 
-extern word SamplesPerMinute, SampleSpace;
-extern lword SampleStartSecond, SamplesTaken;
+extern word SamplesPerMinute;
+extern lword SamplesTaken;
 extern byte Status;
 
 word sampling_start (const command_sample_t*, word);

@@ -51,7 +51,7 @@ typedef struct {
 
 #define	command_stream_code	6
 typedef struct {
-	word	spm;
+	byte	dummy;
 } command_stream_t;
 
 #define	command_stop_code	7

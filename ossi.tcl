@@ -35,9 +35,9 @@ set COMPS(pressure)	"pt"
 variable CPARAMS
 #
 set CPARAMS(imu)	{
-				{ "motion" "threshold" "rate" "accuracy"
-					"bandwidth" "components" "report" }
-				{ b g g g g "agct" b }
+				{ "events" "threshold" "rate" "accuracy"
+				  "bandwidth" "components" "report" "datarate" }
+				{ "nmd" g g g g "agct" b g }
 			}
 set CPARAMS(humidity)	{
 				{ "heater" "accuracy" "components" "sampling" }
@@ -149,8 +149,7 @@ oss_command stream 0x06 {
 #
 # Start streaming
 #
-	# Samples per minute
-	word	spm;
+	byte	dummy;
 }
 
 oss_command stop 0x07 {
@@ -258,8 +257,7 @@ oss_message etrain 0x81 {
 #
 	lword	last;
 	word	offset;
-	byte	sspace;
-	byte	clock;
+	word	clock;
 }
 
 # streaming blocks interpreted separately (in a non-standard way)
@@ -518,7 +516,7 @@ proc do_config { sen } {
 			set v [parse_grade $k]
 		} else {
 			# components
-			set v [parse_component $k $COMPS($sen)]
+			set v [parse_component $k $m]
 		}
 
 		lappend bb [expr { ($ix << 4) | $v } ]
@@ -962,21 +960,15 @@ proc show_msg_status { msg } {
 				}
 			} else {
 				# components
-				if [info exists COMPS($sname)] {
-					set cs $COMPS($sname)
-					set cl [string length $cs]
-					set gg ""
-					for { set k 0 } { $k < $cl } \
-						{ incr k } {
-						if { [expr { (1<<$k)&$val }] } {
-							append gg [string \
-								index $cs $k]
-						} else {
-							append gg "."
-						}
+				set cl [string length $ptype]
+				set gg ""
+				for { set k 0 } { $k < $cl } { incr k } {
+					if { [expr { (1 << $k) & $val }] } {
+						append gg \
+						    [string index $ptype $k]
+					} else {
+						append gg "."
 					}
-				} else {
-					set gg [format %1x $val]
 				}
 			}
 			append res "    [tab_string $pname 12] $gg\n"
@@ -1383,8 +1375,8 @@ proc show_sblock { ref dat } {
 
 proc show_eot { ref dat } {
 
-	lassign [oss_getvalues $dat "etrain"] last offset sspace sclock
+	lassign [oss_getvalues $dat "etrain"] last offset sclock
 
 	oss_out "E: [format %10u $last] [format %5u $offset]\
-		 [format %3u $sspace] [format %3u $sclock]"
+		 [format %3u $sclock]"
 }

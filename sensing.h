@@ -78,7 +78,7 @@
 #define	MPU9250_PAR_REPORT	6
 
 typedef struct {
-	byte motion, components;
+	byte evtype, components;
 	// Only needed in motion detection mode
 	word motion_events;
 } mpu9250_desc_t;
@@ -164,6 +164,7 @@ void read_hdc1000 (word, address);
 void read_opt3001 (word, address);
 void read_bmp280 (word, address);
 void read_obmicrophone (word, address);
+void ready_mpu9250 (word);
 
 #else
 
@@ -172,6 +173,7 @@ void read_obmicrophone (word, address);
 // ============================================================================
 
 #define read_mpu9250(s,p)	read_sensor (s, SENSOR_MPU9250, p)
+#define	ready_mpu9250(s)	wait_sensor (SENSOR_MPU9250, s)
 #define read_hdc1000(s,p)	read_sensor (s, SENSOR_HDC1000, p)
 #define read_opt3001(s,p)	read_sensor (s, SENSOR_OPT3001, p)
 #define read_bmp280(s,p)	read_sensor (s, SENSOR_BMP280, p)

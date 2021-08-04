@@ -12,11 +12,11 @@
 #include "sensing.h"
 #include "sampling.h"
 
-word	SamplesPerMinute,	// Target rate
-	SampleSpace;		// Adjustable space to meet target rate
+lword	SamplesTaken;		// Samples taken so far
+word	SamplesPerMinute;	// Target rate
 
-lword	SampleStartSecond,	// When sampling started
-	SamplesTaken;		// Samples taken so far
+static lword	SampleStartSecond;	// When sampling started
+static word	SampleSpace;		// Adjustable space to meet target rate
 
 // ============================================================================
 
@@ -82,8 +82,6 @@ fsm sampling_corrector {
 				SamplesPerMinute;
 
 		t = (SampleSpace * SamplesTaken) / p;
-
-// diag ("SC: %lu %lu->%lu %u->%u", s, SamplesTaken, p, SampleSpace, t);
 
 		SampleSpace = t > MAX_SAMPLE_SPACE ? MAX_SAMPLE_SPACE :
 			(t < MIN_SAMPLE_SPACE ? MIN_SAMPLE_SPACE : (word) t);
