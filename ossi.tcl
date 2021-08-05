@@ -146,7 +146,7 @@ oss_command stream 0x06 {
 #
 # Start streaming
 #
-	byte	dummy;
+	blob	confdata;
 }
 
 oss_command stop 0x07 {
@@ -162,8 +162,6 @@ oss_command ap 0x08 {
 #
 	# Node ID (setup Id)
 	word	nodeid;
-	# Number of packets to send as wake packets
-	byte	nwake;
 	# Packet retry count
 	byte	nretr;
 	# Packet loss rate (debugging)
@@ -229,7 +227,6 @@ oss_message ap 0x08 {
 # To be extended later
 #
 	word	nodeid;
-	byte	nwake;
 	byte	nretr;
 	word	loss;
 }
@@ -252,6 +249,7 @@ oss_message etrain 0x81 {
 	lword	last;
 	word	offset;
 	word	clock;
+	byte	dropped;
 }
 
 # streaming blocks interpreted separately (in a non-standard way)
@@ -440,6 +438,11 @@ proc parse_cmd_configure { } {
 		}
 		set handled($k) ""
 		set rs [do_config $k]
+
+		if { $rs == "" } {
+			error "null configuration for $k"
+		}
+
 		set le [llength $rs]
 		# sensor number
 		set ix [lsearch -exact $SNAMES(S) $k]
@@ -450,10 +453,6 @@ proc parse_cmd_configure { } {
 		if { $le > 0 } {
 			# make it length - 1
 			incr le -1
-			if { $le > 15 } {
-				# a sanity check
-				error "too many settings for $k"
-			}
 			lappend bb [expr { ($ix << 4) | $le }]
 			set bb [concat $bb $rs]
 		}
@@ -518,8 +517,8 @@ proc do_config { sen } {
 
 	}
 
-	if { $bb == "" } {
-		error "null configuration for $sen"
+	if { [llength $bb] > 16 } {
+		error "too many settings for $sen"
 	}
 
 	return $bb
@@ -610,7 +609,7 @@ proc parse_cmd_on_off { opt } {
 	oss_issuecommand 0x04 [oss_setvalues [list $opt] "onoff"]
 }
 
-proc parse_cmd_ss { ord } {
+proc parse_cmd_sample { } {
 #
 # Start sampling or streaming
 #
@@ -643,17 +642,22 @@ proc parse_cmd_ss { ord } {
 
 	parse_empty
 
-	oss_issuecommand $ord [oss_setvalues [list $frq] "sample"]
-}
-
-proc parse_cmd_sample { } {
-
-	parse_cmd_ss 0x05
+	oss_issuecommand 0x05 [oss_setvalues [list $frq] "sample"]
 }
 
 proc parse_cmd_stream { } {
 
-	parse_cmd_ss 0x06
+	set rs [do_config "imu"]
+	set le [llength $rs]
+	if { $le } {
+		incr le -1
+		# IMU is number zero, so the config sequence looks right
+		set bb [concat [list $le] $rs]
+	} else {
+		set bb ""
+	}
+
+	oss_issuecommand 0x06 [oss_setvalues [list $bb] "stream"]
 }
 
 proc parse_cmd_stop { } {
@@ -695,7 +699,6 @@ proc parse_cmd_ap { } {
 	# unused
 	set nodeid 0xFFFF
 	set loss 0xFFFF
-	set nwake 0xFF
 	set nretr 0xFF
 
 	while 1 {
@@ -705,7 +708,7 @@ proc parse_cmd_ap { } {
 			break
 		}
 
-		set k [oss_keymatch $tp { "node" "wake" "retries" "loss" }]
+		set k [oss_keymatch $tp { "node" "retries" "loss" }]
 
 		if [info exists handled($k)] {
 			error "duplicate -$k"
@@ -715,11 +718,6 @@ proc parse_cmd_ap { } {
 
 		if { $k == "node" } {
 			set nodeid [parse_value "-node" 1 65534]
-			continue
-		}
-
-		if { $k == "wake" } {
-			set nwake [parse_value "-wake" 0 3]
 			continue
 		}
 
@@ -734,7 +732,7 @@ proc parse_cmd_ap { } {
 	parse_empty
 
 	oss_issuecommand 0x08 \
-		[oss_setvalues [list $nodeid $nwake $nretr $loss] "ap"]
+		[oss_setvalues [list $nodeid $nretr $loss] "ap"]
 }
 
 ###############################################################################
@@ -1046,7 +1044,6 @@ proc to_f16 { w } {
 	return [format %7.4f [expr { $w / 32768.0 }]]
 }
 
-
 proc get_f16 { bb } {
 
 	upvar $bb data
@@ -1260,11 +1257,10 @@ proc show_report_press { d cmp } {
 
 proc show_msg_ap { msg } {
 
-	lassign [oss_getvalues $msg "ap"] nodeid nwake nretr loss
+	lassign [oss_getvalues $msg "ap"] nodeid nretr loss
 
 	set res "AP status:\n"
 	append res "  Node Id (-node):                   $nodeid\n"
-	append res "  Copies of wake packet (-wake):     $nwake\n"
 	append res "  Copies of cmd packet (-retries):   $nretr\n"
 	append res "  Loss (packets per 1024):           $loss\n"
 
@@ -1348,8 +1344,8 @@ proc show_sblock { ref dat } {
 
 proc show_eot { ref dat } {
 
-	lassign [oss_getvalues $dat "etrain"] last offset sclock
+	lassign [oss_getvalues $dat "etrain"] last offset sclock drop
 
 	oss_out "E: [format %10u $last] [format %5u $offset]\
-		 [format %3u $sclock]"
+		 [format %5u $sclock] [format %3u $drop]"
 }

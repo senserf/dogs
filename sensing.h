@@ -147,7 +147,7 @@ extern byte Sensors;
 extern mpu9250_desc_t mpu9250_desc;
 
 word sensing_turn (byte);
-word sensing_configure (const command_config_t*, sint);
+word sensing_configure (const blob*, sint);
 word sensing_status (byte*);
 word sensing_report (byte*, address);
 

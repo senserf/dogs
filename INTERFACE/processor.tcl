@@ -37,34 +37,20 @@ proc scanfile { fd } {
 			incr blen
 
 			if { $blen == 12 } {
-				lappend res [list $bnum $tim $blk]
+				lappend res [list $bnum $blk]
 				set inb 0
 			}
 
 			continue
 		}
 
-		if [regexp "(..:..:..)\\.(...).*B: *(\[\[:digit:\]\]+)" \
-			$line mat tim ms bn] {
+		if [regexp "B: *(\[\[:digit:\]\]+)" $line mat bn] {
 
 			if [catch { expr { $bn } } bnum] {
 				err "line $lnum, illegal block number $bn,\
 					$bnum"
 				continue
 			}
-			if [catch { clock scan $tim } sec] {
-				err "line $lnum, block $bnum, illegal time\
-					$tim, $sec"
-				continue
-			}
-			regsub "^0+"  $ms "" ms
-			if { $ms == "" } { set ms 0 }
-			if { [catch { expr { $ms } } mse] || $mse > 999 } {
-				err "line $lnum, block $bnum, illegal millisec\
-					count $ms, $mse"
-				continue
-			}
-			set tim [expr { $sec * 1000 + $mse }]
 			set inb 1
 			set blk ""
 			set blen 0

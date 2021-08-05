@@ -495,7 +495,7 @@ static word configure_sensor (byte *opt, sint nopt, const byte *pmt, word pml) {
 	return ACK_OK;
 }
 
-word sensing_configure (const command_config_t *cmd, sint lft) {
+word sensing_configure (const blob *cdt, sint lft) {
 //
 // Configure sensors
 //
@@ -503,11 +503,11 @@ word sensing_configure (const command_config_t *cmd, sint lft) {
 	word sen;
 	const byte *buf;
 
-	if (lft < cmd->confdata.size + 2)
+	if (lft < cdt->size + 2)
 		return ACK_LENGTH;
 
-	buf = cmd->confdata.content;
-	lft = cmd->confdata.size;
+	buf = cdt->content;
+	lft = cdt->size;
 
 	while (lft) {
 		// Sensor number

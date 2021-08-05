@@ -120,8 +120,8 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_config_code:
 
 			// Configure sensors
-			ret = sensing_configure ((const command_config_t*) par,
-				pml);
+			ret = sensing_configure (
+			    &(((const command_config_t*) par)->confdata), pml);
 			break;
 
 		case command_onoff_code:
@@ -158,7 +158,8 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_stream_code:
 
 			// Start streaming
-			ret = streaming_start ();
+			ret = streaming_start ((const command_stream_t*) par,
+				pml);
 			if (ret == ACK_OK)
 				// Don't send the ACK, the train is coming,
 				// just return
@@ -247,7 +248,7 @@ fsm root (aword sflags) {
 
 	state RS_INIT:
 
-#if 0
+#if 1
 		if (sflags == 0)
 			// Start in hibernating state, wakeup on button
 			hibernate ();

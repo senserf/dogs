@@ -20,6 +20,16 @@
 
 #include "ledsignal.h"
 
+#ifndef	__SMURPH__
+#if RADIO_WOR_MODE
+#define	USE_WAKE_ON_RADIO	1
+#endif
+#endif
+
+#ifndef	USE_WAKE_ON_RADIO
+#define	USE_WAKE_ON_RADIO	0
+#endif
+
 // ============================================================================
 // ============================================================================
 
@@ -29,7 +39,7 @@ static oss_hdr_t	*CMD;		// Current command ...
 static address		PMT;		// ... and its payload
 static word		PML;		// Length
 
-static command_ap_t	APS = { 1, 0, 2, 0 };		// AP status
+static command_ap_t	APS = { 1, 2, 0 };		// AP status
 
 // Debugging ==================================================================
 static word		FLoss = 0;
@@ -48,7 +58,7 @@ static void led_tt () {
 }
 
 static void led_rx () {
-	led_signal (1, 1, 64);
+	led_signal (1, 1, 16);
 }
 
 // ============================================================================
@@ -74,6 +84,10 @@ static void handle_oss_command () {
 //
 	address msg;
 	word i;
+
+#if USE_WAKE_ON_RADIO
+	byte WorCnt;
+#endif
 
 #define	msghdr	((oss_hdr_t*)msg)
 
@@ -114,10 +128,6 @@ static void handle_oss_command () {
 			}
 			done++;
 		}
-		if (pmt->nwake != BNONE) {
-			APS.nwake = pmt->nwake;
-			done++;
-		}
 		if (pmt->nretr != BNONE) {
 			APS.nretr = pmt->nretr;
 			done++;
@@ -151,7 +161,6 @@ static void handle_oss_command () {
 		led_tt ();
 		return;
 #undef	pmt
-#undef	msghdr
 	}
 
 	if (PML > MAX_PACKET_LENGTH - PKT_FRAME_ALL) {
@@ -160,36 +169,39 @@ static void handle_oss_command () {
 		return;
 	}
 
+#if USE_WAKE_ON_RADIO
+	if (CMD->code == command_radio_code) {
+#define	pmt	((command_radio_t*)PMT)
+		if (pmt->options == 2) {
+			// On request, force wor
+			WorCnt = 1;
+		}
+	}
+#undef	pmt
+#endif
+
+#undef	msghdr
+
 	// To be passed to the node
 	if (CMD->code == command_stream_code)
 		// Intercept this one for a trifle
 		pegstream_init ();
 
-#ifndef	__SMURPH__
-#if RADIO_WOR_MODE
-	// No WOR in VUEE
-	for (i = 0; i < APS.nwake; i++) {
-		// This is executed if WOR wakeup is set, nwake times
+#if USE_WAKE_ON_RADIO
+	while (WorCnt) {
 		if ((msg = tcv_wnpu (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
 		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
 		tcv_endpx (msg, NO);
+		WorCnt--;
 	}
+	led_tt ();
 #endif
-#endif
+
 	i = 0;
 	led_tt ();
+
 	do {
-#ifndef	__SMURPH__
-#if RADIO_WOR_MODE
-		if (APS.nretr == 0 && APS.nwake != 0)
-			// WOR wakeup has been sent, and we don't want to
-			// force regular packets on top of it
-			return;
-#endif
-#endif
-		// At least once if APS.nwake == 0, ragrdless of the setting of
-		// nretr
 		if ((msg = tcv_wnp (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
 		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);

@@ -49,7 +49,7 @@ typedef struct {
 
 #define	command_stream_code	6
 typedef struct {
-	byte	dummy;
+	blob	confdata;
 } command_stream_t;
 
 #define	command_stop_code	7
@@ -60,7 +60,6 @@ typedef struct {
 #define	command_ap_code	8
 typedef struct {
 	word	nodeid;
-	byte	nwake;
 	byte	nretr;
 	word	loss;
 } command_ap_t;
@@ -86,6 +85,7 @@ typedef struct {
 	lword	last;
 	word	offset;
 	word	clock;
+	byte	dropped;
 } message_etrain_t;
 
 #define	message_status_code	3

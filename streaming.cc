@@ -21,7 +21,7 @@ static	lword		LastSent, LastGenerated;
 static	strblk_t	*BHead, *BTail, *CBuilt, *CCar;
 static	word		NQueued, NCars, CFill;
 static	aword		TSender;
-static	byte		TSStat, LTrain;
+static	byte		TSStat, LTrain, Dropped;
 
 static inline lword encode (address data) {
 	return (((lword)(data [0] & 0xffc0)) << 16) |
@@ -59,8 +59,12 @@ static void add_current () {
 	// Make sure the queue is never longer than max and the offset
 	// is kosher
 	while (NQueued >= STRM_MAX_QUEUED || (BHead != NULL && (LastGenerated -
-	    BHead -> bn >= STRM_MAX_BLOCKSPAN)))
+	    BHead -> bn >= STRM_MAX_BLOCKSPAN))) {
 		delete_front ();
+		// To include in the EOT packet
+		if (Dropped < 255)
+			Dropped++;
+	}
 
 	if (BTail == NULL)
 		BHead = BTail = CBuilt;
@@ -109,6 +113,7 @@ static void fill_eot (address pkt) {
 	// Note that offset == 0 means no blocks can be retransmitted (LastSent
 	// is below the head), 1 means head == LastSent
 	pay -> clock = (word) seconds ();
+	pay -> dropped = Dropped;
 #undef pay
 }
 
@@ -122,6 +127,7 @@ fsm streaming_trainsender {
 		CCar = BHead;
 		TSStat = STRM_TSSTAT_NONE;
 		LTrain++;
+		Dropped = 0;
 
 	state ST_NEXT:
 
@@ -341,12 +347,28 @@ end_ack:
 #undef	end_cb
 }
 
-word streaming_start () {
+word streaming_start (const command_stream_t *par, word pml) {
 //
 // Assume same request format as for sampling (just the rate for now)
 //
+	word ret;
+	const byte *buf;
+
 	if (Status == STATUS_SAMPLING)
 		return ACK_BUSY;
+
+	if (pml < 2)
+		return ACK_PARAM;
+
+	if (par->confdata.size != 0) {
+		// Full automatic setup
+		if ((ret = sensing_configure (&(par->confdata), pml)) != ACK_OK)
+			return ret;
+		// All sensors off
+		sensing_all_off ();
+		// Turn on the IMU
+		sensing_turn (0x81);
+	}
 
 	if (!mpu9250_active || mpu9250_desc . components != 1 ||
 	    mpu9250_desc . evtype != 2)
