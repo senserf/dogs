@@ -86,7 +86,7 @@ static void handle_oss_command () {
 	word i;
 
 #if USE_WAKE_ON_RADIO
-	byte WorCnt;
+	byte WorCnt = 0;
 #endif
 
 #define	msghdr	((oss_hdr_t*)msg)

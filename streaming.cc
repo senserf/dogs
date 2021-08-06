@@ -386,6 +386,7 @@ word streaming_start (const command_stream_t *par, word pml) {
 	    (TSender = runfsm streaming_trainsender)) {
 		Status = STATUS_STREAMING;
 		LTrain = 0;
+		powerup ();
 		return ACK_OK;
 	}
 
@@ -415,4 +416,5 @@ void streaming_stop () {
 	CCar = NULL;
 
 	Status = STATUS_IDLE;
+	powerdown ();
 }

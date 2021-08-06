@@ -200,19 +200,19 @@ fsm button_holder (sint counter) {
 
 	state BH_LOOP:
 
-		delay (1, BH_TRY);
+		delay (10, BH_TRY);
 		release;
 
 	state BH_TRY:
 
 		if (!button_down (ACTIVATING_BUTTON)) {
-			// A short push. toggle radio
+			// A short push, toggle radio
 			ossint_toggle_radio ();
 			finish;
 		}
 
-		if (counter) {
-			counter--;
+		if ((counter -= 10) >= 0) {
+			savedata (counter);
 			sameas BH_LOOP;
 		}
 
@@ -262,7 +262,7 @@ fsm root {
 #endif
 		powerdown ();
 
-		led_signal (0, 4, 128);
+		led_signal (0, 1, 128);
 		// Initialize the interface in RF active state
 		osscmn_init ();
 
