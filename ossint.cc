@@ -81,28 +81,3 @@ fsm ossint_sensor_status_sender {
 		tcv_endpx (msg, YES);
 		finish;
 }
-
-void ossint_toggle_radio () {
-
-	byte what;
-
-	if ((what = RadioOn + 1) > 2)
-		what = 0;
-
-	osscmn_turn_radio (what);
-
-	led_signal (0, 2 + 2 * what, 128);
-}
-
-word ossint_set_radio (const command_radio_t *pmt, word pml) {
-
-	if (pml < 1)
-		return ACK_LENGTH;
-
-	if (pmt->options > 3)
-		return ACK_PARAM;
-
-	runfsm delayed_switch (pmt->options);
-
-	return ACK_OK;
-}

@@ -8,18 +8,16 @@
 */
 #include "osscmn.h"
 
-cc1350_rfparams_t RFP = {
-	RADIO_DEFAULT_OFFDELAY,
-#if RADIO_WOR_MODE
-	RADIO_DEFAULT_WOR_INTERVAL,
-	RADIO_DEFAULT_WOR_RSSI,
-	YES
-#endif
-};
-
 sint 	RFC;
+byte	LastRef;
 
-byte	RadioOn, LastRef;
+#ifdef	TAG_DEVICE
+// RF duty cycling
+extern	byte RadioActiveCD;
+#define	mark_active	RadioActiveCD = 0
+#else
+#define	mark_active	CNOP
+#endif
 
 fsm radio_receiver {
 
@@ -29,6 +27,7 @@ fsm radio_receiver {
 		oss_hdr_t *osh;
 
 		pkt = tcv_rnp (RS_LOOP, RFC);
+		mark_active;
 
 		if (tcv_left (pkt) >= PKT_FRAME_ALL) {
 			osh = pkt_osshdr (pkt);
@@ -54,6 +53,7 @@ address osscmn_xpkt (byte code, byte ref, word len) {
 		pkt_osshdr (msg) -> code = code;
 		pkt_osshdr (msg) -> ref = ref;
 	}
+	mark_active;
 	return msg;
 }
 
@@ -64,24 +64,6 @@ void osscmn_xack (byte ref, word status) {
 	if ((msg = osscmn_xpkt (0, ref, sizeof (status))) != NULL) {
 		pkt_payload (msg) [0] = status;
 		tcv_endpx (msg, YES);
-	}
-}
-
-void osscmn_turn_radio (byte on) {
-
-	word par;
-
-	if (RadioOn != on) {
-
-		RadioOn = on;
-		if (RadioOn > 1) {
-			// Full on
-			osscmn_rfcontrol (PHYSOPT_RXON, NULL);
-			return;
-		}
-
-		par = RadioOn;
-		osscmn_rfcontrol (PHYSOPT_OFF, &par);
 	}
 }
 
@@ -98,50 +80,10 @@ void osscmn_init () {
 
 	// In this app, the role of NETID is played by the host Id
 	sid = GROUP_ID;
-	osscmn_rfcontrol (PHYSOPT_SETSID, &sid);
-	// osscmn_rfcontrol (PHYSOPT_SETPARAMS, (address)&RFP);
+
+	tcv_control (RFC, PHYSOPT_SETSID, &sid);
 
 	runfsm radio_receiver;
 
-	osscmn_turn_radio (RADIO_MODE_ON);
+	tcv_control (RFC, PHYSOPT_RXON, NULL);
 }
-
-void osscmn_rfcontrol (sint op, address pmt) {
-//
-// Issue sysopt to RF (account for VUEE)
-//
-#ifdef __SMURPH__
-	if (op == PHYSOPT_SETPARAMS) {
-#if RADIO_WOR_MODE
-		emul (1, "RF SETPARAMS: off=%1u, int=%1u, rss=%1u, pqt=%1u",
-			((cc1350_rfparams_t*)pmt)->offdelay,
-			((cc1350_rfparams_t*)pmt)->interval,
-			((cc1350_rfparams_t*)pmt)->rss,
-			((cc1350_rfparams_t*)pmt)->pqt);
-#else
-		emul (1, "RF SETPARAMS: off=%1u",
-			((cc1350_rfparams_t*)pmt)->offdelay);
-#endif
-		return;
-	}
-	if (op == PHYSOPT_OFF) {
-		if (pmt != NULL && pmt) {
-			// WOR request, make it simply ON
-			tcv_control (RFC, PHYSOPT_RXON, NULL);
-			emul (1, "RF WOR MODE");
-			return;
-		}
-		// Fall through for OFF
-	}
-#else
-	// Real world
-#if !RADIO_WOR_MODE
-	if (op == PHYSOPT_OFF && pmt != NULL && pmt) {
-		// This is a WOR request, convert it to ON
-		tcv_control (RFC, PHYSOPT_RXON, NULL);
-		return;
-	}
-#endif
-	tcv_control (RFC, op, pmt);
-#endif
-};

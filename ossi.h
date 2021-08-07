@@ -27,10 +27,10 @@ typedef struct {
 	blob	confdata;
 } command_config_t;
 
-#define	command_radio_code	2
+#define	command_wake_code	2
 typedef struct {
-	byte	options;
-} command_radio_t;
+	byte	dummy;
+} command_wake_t;
 
 #define	command_status_code	3
 typedef struct {
@@ -117,7 +117,6 @@ typedef struct {
 #define	message_ap_code	8
 typedef struct {
 	word	nodeid;
-	byte	nwake;
 	byte	nretr;
 	word	loss;
 } message_ap_t;

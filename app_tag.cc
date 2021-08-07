@@ -17,40 +17,107 @@
 // ============================================================================
 // ============================================================================
 
-byte	Status = STATUS_IDLE;	// Doing what
+byte	Status = STATUS_IDLE,	// Doing what
+	RadioActiveCD;
+
+static	byte  MonStat, MonWake, MonRef;
+
+#define	MS_ON		0
+#define	MS_OFF		1
 
 // ============================================================================
 
-fsm delayed_switch (byte opn) {
+fsm rf_monitor {
 
-	state DS_START:
+	state RFM_ON:
 
-		if (opn == RADIO_MODE_OFF || opn == RADIO_MODE_HIBERNATE) {
-			// Radio goes off or hibernate; give it one second for
-			// the ACK to get through and then proceed
-			led_signal (0, opn ? 64 : 16, opn ? 72 : 150);
-			delay (1024, DS_SWITCH);
+		delay (RF_MONITOR_INTERVAL, RFM_RUN_ON);
+		release;
+
+	state RFM_RUN_ON:
+
+		if (RadioActiveCD >= RF_MONITOR_CD) {
+			// Turn off
+			MonStat = MS_OFF;
+			sampling_stop ();
+			streaming_stop ();
+			sensing_all_off ();
+			tcv_control (RFC, PHYSOPT_OFF, NULL);
+			sameas RFM_OFF;
+		}
+
+		RadioActiveCD++;
+		sameas RFM_ON;
+
+	state RFM_OFF:
+
+		MonWake = 0;
+		delay (RF_OFF_INTERVAL, RFM_RUN_OFF);
+		release;
+
+	state RFM_RUN_OFF:
+
+		tcv_control (RFC, PHYSOPT_ON, NULL);
+		delay (RF_ON_INTERVAL, RFM_CHECK_WAKE);
+		release;
+
+	state RFM_CHECK_WAKE:
+
+		if (RadioActiveCD == 0) {
+			// Activity
+			if (MonWake) {
+				sameas RFM_WACK;
+			} else {
+				MonStat = MS_ON;
+				sameas RFM_ON;
+			}
+		}
+
+		// No activity
+		tcv_control (RFC, PHYSOPT_OFF, NULL);
+		sameas RFM_OFF;
+
+	state RFM_WACK:
+
+		// Wait until the wake messages are gone
+		if (MonWake) {
+			MonWake = 0;
+			delay (RF_WCLEAR_INTERVAL, RFM_WACK);
 			release;
 		}
 
-		// Fall through for normal radio switch
+		// Acknowledge the WAKE
+		osscmn_xack (MonRef, ACK_OK);
+		MonStat = MS_ON;
+		sameas RFM_ON;
+}
 
-	state DS_RADIO:
+static void handle_wake (byte ref) {
 
-		osscmn_turn_radio (opn);
-		finish;
+	if (MonStat == MS_ON) {
+		osscmn_xack (ref, ACK_VOID);
+	} else {
+		MonWake = 1;
+		MonRef = ref;
+	}
+}
+
+// ============================================================================
+
+fsm delayed_switch {
+
+	state DS_START:
+
+		// We hibernate: blink the leds and delay for a sec
+		led_signal (0, 16, 72);
+		delay (1024, DS_SWITCH);
+		release;
 
 	state DS_SWITCH:
 
-		if (opn != RADIO_MODE_HIBERNATE)
-			sameas DS_RADIO;
-
-		// Hibernate
-		osscmn_turn_radio (RADIO_MODE_OFF);
+		tcv_control (RFC, PHYSOPT_OFF, NULL);
 		sensing_all_off ();
-
-		// A bit more delay, so the LEDs finish blinking
-		delay (64 * 72, DS_HIBERNATE);
+		delay (1024, DS_HIBERNATE);
 		release;
 
 	state DS_HIBERNATE:
@@ -105,6 +172,12 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 	}
 
+	if (code == command_wake_code) {
+		// Ignore ref
+		handle_wake (ref);
+		return;
+	}
+
 	// Ignore if duplicate
 	if (ref == LastRef)
 		return;
@@ -113,7 +186,7 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 	// 4 msecs of breathing space for the peg
 	ret = 2;
-	osscmn_rfcontrol (PHYSOPT_CAV, &ret);
+	tcv_control (RFC, PHYSOPT_CAV, &ret);
 
 	switch (code) {
 
@@ -127,12 +200,6 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_onoff_code:
 
 			ret = sensing_turn (*((byte*)par));
-			break;
-
-		case command_radio_code:
-
-			ret = ossint_set_radio ((const command_radio_t*) par,
-				pml);
 			break;
 
 		case command_status_code:
@@ -180,8 +247,14 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_mreg_code:
 
 			do_mreg ((const command_mreg_t*) par, pml);
+Ack:
 			ret = ACK_OK;
 			break;
+
+		case command_wake_code:
+
+			// Do nothing, wake up and acknowledge
+			goto Ack;
 
 		default:
 
@@ -206,8 +279,7 @@ fsm button_holder (sint counter) {
 	state BH_TRY:
 
 		if (!button_down (ACTIVATING_BUTTON)) {
-			// A short push, toggle radio
-			ossint_toggle_radio ();
+			// A short push, do nothing
 			finish;
 		}
 
@@ -218,7 +290,7 @@ fsm button_holder (sint counter) {
 
 	state BH_HIBERNATE:
 
-		if (!runfsm delayed_switch (3))
+		if (!runfsm delayed_switch)
 			sameas BH_LOOP;
 
 		finish;
@@ -265,6 +337,8 @@ fsm root {
 		led_signal (0, 1, 128);
 		// Initialize the interface in RF active state
 		osscmn_init ();
+
+		runfsm rf_monitor;
 
 		buttons_action (buttons);
 

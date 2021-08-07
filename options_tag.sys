@@ -7,6 +7,8 @@
 #define	LEDS_DRIVER		1
 #define	N_SIGNAL_LEDS		1	// 1
 
+#define	TAG_DEVICE		1
+
 // No UART
 #undef	UART_DRIVER
 #undef	UART_TCV
@@ -17,7 +19,7 @@
 
 // ============================================================================
 
-#define	RADIO_WOR_MODE			1 // 1
+#define	RADIO_WOR_MODE			0
 #define	RADIO_OPTIONS			RADIO_OPTION_PXOPTIONS
 
 #define	RADIO_DEFAULT_POWER		7

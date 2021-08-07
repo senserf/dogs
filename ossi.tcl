@@ -112,11 +112,11 @@ oss_command config 0x01 {
 	blob	confdata;
 }
 
-oss_command radio 0x02 {
+oss_command wake 0x02 {
 #
 # Query or set the device status
 #
-	byte	options;
+	byte	dummy;
 }
 
 oss_command status 0x03 {
@@ -355,7 +355,7 @@ proc parse_component { sel cmp } {
 variable CMDS
 
 set CMDS(configure)	"parse_cmd_configure"
-set CMDS(radio)		"parse_cmd_radio"
+set CMDS(wake)		"parse_cmd_wake"
 set CMDS(on)		"parse_cmd_on"
 set CMDS(off)		"parse_cmd_off"
 set CMDS(sample)	"parse_cmd_sample"
@@ -524,36 +524,11 @@ proc do_config { sen } {
 	return $bb
 }
 
-proc parse_cmd_radio { } {
-
-	set klist { "on" "wor" "off" "hibernate" }
-
-	# 0 means no change
-	set ofd 0
-	set win 0
-
-	set tp [parse_selector]
-
-	if { $tp == "" } {
-		error "argument missing"
-	}
-
-	set k [oss_keymatch $tp $klist]
-
-	if { $k == "on" } {
-		set opt 2
-	} elseif { $k == "off" } {
-		set opt 0
-	} elseif { $k == "hibernate" } {
-		set opt 3
-	} else {
-		# WOR
-		set opt 1
-	}
+proc parse_cmd_wake { } {
 
 	parse_empty
 
-	oss_issuecommand 0x02 [oss_setvalues [list $opt] "radio"]
+	oss_issuecommand 0x02 [oss_setvalues [list 0] "wake"]
 }
 
 proc parse_cmd_status { } {

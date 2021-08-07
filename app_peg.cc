@@ -20,16 +20,6 @@
 
 #include "ledsignal.h"
 
-#ifndef	__SMURPH__
-#if RADIO_WOR_MODE
-#define	USE_WAKE_ON_RADIO	1
-#endif
-#endif
-
-#ifndef	USE_WAKE_ON_RADIO
-#define	USE_WAKE_ON_RADIO	0
-#endif
-
 // ============================================================================
 // ============================================================================
 
@@ -63,6 +53,33 @@ static void led_rx () {
 
 // ============================================================================
 
+fsm rooster_thread (byte ref) {
+
+	word Counter;
+
+	state RO_START:
+
+		Counter = RF_WAKE_COUNT;
+
+	state RO_SEND:
+
+		address msg;
+
+		if ((msg = osscmn_xpkt (command_wake_code, ref, 0)) == NULL) {
+			delay (1, RO_SEND);
+			release;
+		}
+
+		tcv_endpx (msg, NO);
+
+		if (--Counter)
+			delay (RF_WAKE_SPACE, RO_SEND);
+		else
+			finish;
+}
+
+// ============================================================================
+
 static void oss_ack (word status) {
 //
 // ACK to the OSS
@@ -84,10 +101,6 @@ static void handle_oss_command () {
 //
 	address msg;
 	word i;
-
-#if USE_WAKE_ON_RADIO
-	byte WorCnt = 0;
-#endif
 
 #define	msghdr	((oss_hdr_t*)msg)
 
@@ -123,7 +136,7 @@ static void handle_oss_command () {
 			if (pmt->nodeid != 0) {
 				// Request to set group Id
 				APS.nodeid = pmt->nodeid;
-				osscmn_rfcontrol (PHYSOPT_SETSID,
+				tcv_control (RFC, PHYSOPT_SETSID,
 					&(APS.nodeid));
 			}
 			done++;
@@ -169,16 +182,13 @@ static void handle_oss_command () {
 		return;
 	}
 
-#if USE_WAKE_ON_RADIO
-	if (CMD->code == command_radio_code) {
-#define	pmt	((command_radio_t*)PMT)
-		if (pmt->options == 2) {
-			// On request, force wor
-			WorCnt = 1;
-		}
+	if (CMD->code == command_wake_code) {
+		if (!running (rooster_thread))
+			runfsm rooster_thread (CMD->ref);
+		else 
+			oss_ack (ACK_BUSY);
+		return;
 	}
-#undef	pmt
-#endif
 
 #undef	msghdr
 
@@ -186,17 +196,6 @@ static void handle_oss_command () {
 	if (CMD->code == command_stream_code)
 		// Intercept this one for a trifle
 		pegstream_init ();
-
-#if USE_WAKE_ON_RADIO
-	while (WorCnt) {
-		if ((msg = tcv_wnpu (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
-			return;
-		memcpy (msg + (PKT_FRAME_PHDR/2), CMD, PML + PKT_FRAME_OSS);
-		tcv_endpx (msg, NO);
-		WorCnt--;
-	}
-	led_tt ();
-#endif
 
 	i = 0;
 	led_tt ();

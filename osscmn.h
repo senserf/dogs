@@ -16,10 +16,16 @@
 #include "tcvphys.h"
 #include "plug_null.h"
 
-#define	RADIO_MODE_HIBERNATE	3
-#define	RADIO_MODE_ON		2
-#define	RADIO_MODE_WOR		1
-#define RADIO_MODE_OFF		0
+// ============================================================================
+
+#define	RF_MONITOR_INTERVAL	2048
+// Note: 10/1500 seems to work quite fine
+#define	RF_ON_INTERVAL		10		// 50
+#define	RF_OFF_INTERVAL		1500		// 990 (adds to 1000)
+#define	RF_WCLEAR_INTERVAL	512
+#define	RF_MONITOR_CD		15		// Amounts to 30 seconds
+#define	RF_WAKE_COUNT		768
+#define	RF_WAKE_SPACE		3
 
 // ============================================================================
 
@@ -82,15 +88,12 @@ struct strblk_t {
 
 // ============================================================================
 
-extern byte	RadioOn, LastRef;
+extern byte	LastRef;
 extern sint	RFC;
-extern cc1350_rfparams_t RFP;
 
 void osscmn_init ();
 address osscmn_xpkt (byte, byte, word);
 void osscmn_xack (byte, word);
-void osscmn_turn_radio (byte);
-void osscmn_rfcontrol (sint, address);
 
 // Provided by the application
 void handle_rf_packet (byte, byte, const address, word);
