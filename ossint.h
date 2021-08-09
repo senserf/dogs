@@ -22,7 +22,6 @@
 #define	message_blast_code	129
 
 void ossint_motion_event (address, word);
-
-fsm ossint_sensor_status_sender;
+word ossint_send_status ();
 
 #endif

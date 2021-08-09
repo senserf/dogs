@@ -29,7 +29,7 @@ static oss_hdr_t	*CMD;		// Current command ...
 static address		PMT;		// ... and its payload
 static word		PML;		// Length
 
-static command_ap_t	APS = { 1, 2, 0 };		// AP status
+static command_ap_t	APS = { 0, 2, 0 };		// AP status
 
 // Debugging ==================================================================
 static word		FLoss = 0;
@@ -59,7 +59,7 @@ fsm rooster_thread (byte ref) {
 
 	state RO_START:
 
-		Counter = RF_WAKE_COUNT;
+		Counter = ACT_WAKE_COUNT;
 
 	state RO_SEND:
 
@@ -73,7 +73,7 @@ fsm rooster_thread (byte ref) {
 		tcv_endpx (msg, NO);
 
 		if (--Counter)
-			delay (RF_WAKE_SPACE, RO_SEND);
+			delay (ACT_WAKE_SPACE, RO_SEND);
 		else
 			finish;
 }
@@ -194,7 +194,7 @@ static void handle_oss_command () {
 
 	// To be passed to the node
 	if (CMD->code == command_stream_code)
-		// Intercept this one for a trifle
+		// Intercept this one before sending it out
 		pegstream_init ();
 
 	i = 0;

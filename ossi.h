@@ -86,16 +86,17 @@ typedef struct {
 	word	offset;
 	word	clock;
 	byte	dropped;
+	byte	voltage;
 } message_etrain_t;
 
 #define	message_status_code	3
 typedef struct {
 	lword	uptime;
 	lword	taken;
-	word	battery;
 	word	freemem;
 	word	minmem;
 	word	rate;
+	byte	battery;
 	byte	sset;
 	byte	status;
 	blob	sstat;

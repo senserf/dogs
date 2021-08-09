@@ -114,6 +114,7 @@ static void fill_eot (address pkt) {
 	// is below the head), 1 means head == LastSent
 	pay -> clock = (word) seconds ();
 	pay -> dropped = Dropped;
+	pay -> voltage = VOLTAGE;
 #undef pay
 }
 

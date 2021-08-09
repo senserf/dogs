@@ -20,7 +20,9 @@
 byte	Status = STATUS_IDLE,	// Doing what
 	RadioActiveCD;
 
-static	byte  MonStat, MonWake, MonRef;
+word	Voltage;
+
+static	byte  MonStat, MonWake, MonRef, BatCnt = 1;
 
 #define	MS_ON		0
 #define	MS_OFF		1
@@ -31,12 +33,12 @@ fsm rf_monitor {
 
 	state RFM_ON:
 
-		delay (RF_MONITOR_INTERVAL, RFM_RUN_ON);
+		delay (ACT_MONITOR_INTERVAL, RFM_RUN_ON);
 		release;
 
 	state RFM_RUN_ON:
 
-		if (RadioActiveCD >= RF_MONITOR_CD) {
+		if (RadioActiveCD >= ACT_COUNTDOWN) {
 			// Turn off
 			MonStat = MS_OFF;
 			sampling_stop ();
@@ -47,18 +49,26 @@ fsm rf_monitor {
 		}
 
 		RadioActiveCD++;
+
+		if (--BatCnt != 0)
+			sameas RFM_ON;
+
+	state RFM_BATTMON:
+
+		read_sensor (RFM_BATTMON, SENSOR_BATTERY, &Voltage);
+		BatCnt = ACT_BATTMON_FREQ;
 		sameas RFM_ON;
 
 	state RFM_OFF:
 
 		MonWake = 0;
-		delay (RF_OFF_INTERVAL, RFM_RUN_OFF);
+		delay (ACT_RXOFF_INTERVAL, RFM_RUN_OFF);
 		release;
 
 	state RFM_RUN_OFF:
 
 		tcv_control (RFC, PHYSOPT_ON, NULL);
-		delay (RF_ON_INTERVAL, RFM_CHECK_WAKE);
+		delay (ACT_RXON_INTERVAL, RFM_CHECK_WAKE);
 		release;
 
 	state RFM_CHECK_WAKE:
@@ -82,7 +92,7 @@ fsm rf_monitor {
 		// Wait until the wake messages are gone
 		if (MonWake) {
 			MonWake = 0;
-			delay (RF_WCLEAR_INTERVAL, RFM_WACK);
+			delay (ACT_WCLEAR_INTERVAL, RFM_WACK);
 			release;
 		}
 
@@ -205,15 +215,10 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 		case command_status_code:
 
 			// Respond with status
-			if (running (ossint_sensor_status_sender)) {
-				ret = ACK_BUSY;
-				break;
-			} else if (!runfsm ossint_sensor_status_sender) {
-				ret = ACK_NORES;
-				break;
-			}
-			// No ACK
-			return;
+			if ((ret = ossint_send_status ()) == ACK_OK)
+				// No ACK if OK
+				return;
+			break;
 
 		case command_sample_code:
 

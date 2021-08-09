@@ -11,6 +11,9 @@
 #define	STATUS_STREAMING	2
 
 extern byte	Status;
+extern word	Voltage;
+
+#define	VOLTAGE	((byte)(Voltage >> 3))
 
 fsm delayed_switch (byte);
 

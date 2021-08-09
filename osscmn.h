@@ -18,14 +18,15 @@
 
 // ============================================================================
 
-#define	RF_MONITOR_INTERVAL	2048
+#define	ACT_MONITOR_INTERVAL	2048
 // Note: 10/1500 seems to work quite fine
-#define	RF_ON_INTERVAL		10		// 50
-#define	RF_OFF_INTERVAL		1500		// 990 (adds to 1000)
-#define	RF_WCLEAR_INTERVAL	512
-#define	RF_MONITOR_CD		15		// Amounts to 30 seconds
-#define	RF_WAKE_COUNT		768
-#define	RF_WAKE_SPACE		3
+#define	ACT_RXON_INTERVAL	10		// 50
+#define	ACT_RXOFF_INTERVAL	1500		// 990 (adds to 1000)
+#define	ACT_WCLEAR_INTERVAL	512		// To clear wake messages
+#define	ACT_COUNTDOWN		15		// Amounts to 30 seconds
+#define	ACT_WAKE_COUNT		768
+#define	ACT_WAKE_SPACE		3		// Millisecs
+#define	ACT_BATTMON_FREQ	255		// x 2 = 512 sec
 
 // ============================================================================
 

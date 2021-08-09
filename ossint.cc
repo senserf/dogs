@@ -35,49 +35,43 @@ void ossint_motion_event (address values, word events) {
 	}
 }
 
-fsm ossint_sensor_status_sender {
+word ossint_send_status () {
 //
 // Message format:
 //
 //	lword	uptime;
 //	lword	taken;		[samples taken]
-//	word	battery;
 //	word	freemem;
 //	word	mnimem;
 //	word	rate;		[Samples/Takes per minute]
+//	byte	battery;
 //	byte	sset;		[ON sensors]
 //	byte	status;		[doing what]
 //	blob	sstat;		[sensor configuration]
 //
-	state WAIT_BATTERY:
+	word blen;
+	address msg;
+	message_status_t *pmt;
 
-		word batt, blen;
-		address msg;
-		message_status_t *pmt;
+	// The blob length
+	blen = sensing_status (NULL);
 
-		read_sensor (WAIT_BATTERY, SENSOR_BATTERY, &batt);
+	if ((msg = osscmn_xpkt (message_status_code, LastRef,
+	    sizeof (message_status_t) + blen)) == NULL)
+		return ACK_NORES;
 
-		// Determine the blob length
-		blen = sensing_status (NULL);
+	pmt = (message_status_t*) pkt_payload (msg);
+	pmt->uptime = seconds ();
+	pmt->taken = SamplesTaken;
+	pmt->battery = VOLTAGE;
+	pmt->freemem = memfree (0, &(pmt->minmem));
+	pmt->rate = SamplesPerMinute;
+	pmt->status = Status;
+	pmt->sset = Sensors;
 
-		if ((msg = osscmn_xpkt (message_status_code, LastRef,
-		    sizeof (message_status_t) + blen)) == NULL) {
-			// Keep waiting for memory, this will not happen
-			delay (256, WAIT_BATTERY);
-			release;
-		}
+	pmt->sstat.size = sensing_status (
+		(byte*)(((word*)&(pmt->sstat.size)) + 1));
+	tcv_endpx (msg, YES);
 
-		pmt = (message_status_t*) pkt_payload (msg);
-		pmt->uptime = seconds ();
-		pmt->taken = SamplesTaken;
-		pmt->battery = batt;
-		pmt->freemem = memfree (0, &(pmt->minmem));
-		pmt->rate = SamplesPerMinute;
-		pmt->status = Status;
-		pmt->sset = Sensors;
-
-		pmt->sstat.size = sensing_status (
-			(byte*)(((word*)&(pmt->sstat.size)) + 1));
-		tcv_endpx (msg, YES);
-		finish;
+	return ACK_OK;
 }

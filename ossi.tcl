@@ -62,8 +62,8 @@ set CPARAMS(pressure)	{
 proc sensor_to_voltage { val } {
 
 	# integer volts
-	set g [expr { $val >> 8 }]
-	set f [expr { double($val & 0xff) / 256.0 }]
+	set g [expr { ($val >> 5) & 0xf }]
+	set f [expr { double($val & 0x1f) / 32.0 }]
 	return [format "%4.2fV" [expr { double($g) + $f }]]
 }
 
@@ -186,10 +186,10 @@ oss_message status 0x03 {
 #
 	lword	uptime;
 	lword	taken;
-	word 	battery;
 	word	freemem;
 	word	minmem;
 	word	rate;
+	byte 	battery;
 	byte	sset;
 	byte	status;
 	# 21 bytes so far
@@ -250,6 +250,7 @@ oss_message etrain 0x81 {
 	word	offset;
 	word	clock;
 	byte	dropped;
+	byte	voltage;
 }
 
 # streaming blocks interpreted separately (in a non-standard way)
@@ -851,7 +852,7 @@ proc show_msg_status { msg } {
 	variable CPARAMS
 	variable COMPS
 
-	lassign [oss_getvalues $msg "status"] upt tak bat frm mim rat sns sta \
+	lassign [oss_getvalues $msg "status"] upt tak frm mim rat bat sns sta \
 		spa
 
 	if { $sta == 0 } {
@@ -1319,8 +1320,9 @@ proc show_sblock { ref dat } {
 
 proc show_eot { ref dat } {
 
-	lassign [oss_getvalues $dat "etrain"] last offset sclock drop
+	lassign [oss_getvalues $dat "etrain"] last offset sclock drop bat
 
 	oss_out "E: [format %10u $last] [format %5u $offset]\
-		 [format %5u $sclock] [format %3u $drop]"
+		 [format %5u $sclock] [format %3u $drop]\
+			[sensor_to_voltage $bat]"
 }
