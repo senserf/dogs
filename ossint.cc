@@ -47,30 +47,46 @@ word ossint_send_status () {
 //	byte	battery;
 //	byte	sset;		[ON sensors]
 //	byte	status;		[doing what]
-//	blob	sstat;		[sensor configuration]
 //
-	word blen;
 	address msg;
 	message_status_t *pmt;
 
-	// The blob length
-	blen = sensing_status (NULL);
-
 	if ((msg = osscmn_xpkt (message_status_code, LastRef,
-	    sizeof (message_status_t) + blen)) == NULL)
+	    sizeof (message_status_t))) == NULL)
 		return ACK_NORES;
 
 	pmt = (message_status_t*) pkt_payload (msg);
 	pmt->uptime = seconds ();
 	pmt->taken = SamplesTaken;
-	pmt->battery = VOLTAGE;
 	pmt->freemem = memfree (0, &(pmt->minmem));
 	pmt->rate = SamplesPerMinute;
-	pmt->status = Status;
+	pmt->battery = VOLTAGE;
 	pmt->sset = Sensors;
+	pmt->status = Status;
 
-	pmt->sstat.size = sensing_status (
-		(byte*)(((word*)&(pmt->sstat.size)) + 1));
+	tcv_endpx (msg, YES);
+
+	return ACK_OK;
+}
+
+word ossint_send_config () {
+//
+// Send sensor configuration
+//
+	word blen;
+	address msg;
+	message_config_t *pmt;
+
+	// The blob length
+	blen = sensing_getconf (NULL);
+
+	if ((msg = osscmn_xpkt (message_config_code, LastRef,
+	    sizeof (message_config_t) + blen)) == NULL)
+		return ACK_NORES;
+
+	pmt = (message_config_t*) pkt_payload (msg);
+
+	pmt->confdata.size = sensing_getconf (pmt->confdata.content);
 	tcv_endpx (msg, YES);
 
 	return ACK_OK;

@@ -11,22 +11,7 @@ set SNAMES(S) 		{ "imu" "microphone" "pressure" "humidity" "light" }
 # Single-letter abbreviations
 set SNAMES(A)		"imphl"
 #
-# Discrete gradation for those parameters that fit the "g" class. Actual 
-# numerical parameters will be mapped into this scale by the node. These
-# are synonymes for 0-7.
-#
-set SNAMES(G) 		{ "tiny" "low" "small" "medium" "big" "high" "huge" 
-				"extreme" }
-
-#
-# Components by sensor. Only for those sensors that have components. Map to
-# bits (a = 1, g = 2, c = 4, t = 8).
-#
-variable COMPS
-#
-set COMPS(imu) 		"agct"
-set COMPS(humidity)	"ht"
-set COMPS(pressure)	"pt"
+# Parameters
 
 #
 # Specific parameters by sensor: b = yes/no, g = graded, string = component
@@ -35,26 +20,39 @@ set COMPS(pressure)	"pt"
 variable CPARAMS
 #
 set CPARAMS(imu)	{
-				{ "events" "threshold" "rate" "accuracy"
-				  "bandwidth" "components" "report" "datarate" }
-				{ "nmd" g g g g "agct" b g }
+			  { "options" 		"lsmr"	 	}
+			  { "threshold"		"0-255"		}
+			  { "lprate"		"0-11"		}
+			  { "range"		"0-3"		}
+			  { "bandwidth"		"0-7"		}
+			  { "rate"		"0-255"		}
+			  { "components"	"agct"		}
 			}
+
 set CPARAMS(humidity)	{
-				{ "heater" "accuracy" "components" "sampling" }
-				{ b g "ht" g }
+			  { "options"		"h"		}
+			  { "accuracy"		"0-3"		}
+			  { "sampling"		"1-8192" 	}
+			  { "components"	"ht"		}
 			}
+
 set CPARAMS(microphone)	{
-				{ "rate" }
-				{ g }
+			  { "rate"		"100-2475"	}
 			}
+
 set CPARAMS(light)	{
-				{ "continuous" "accuracy" "sampling" }
-				{ b g g }
+			  { "options"		"c"		}
+			  { "accuracy"		"0-1"		}
+			  { "sampling"		"1-8192"	}
 			}
+
 set CPARAMS(pressure)	{
-				{ "forced" "rate" "accuracy" "bandwidth"
-					"components" "sampling" }
-				{ b g g g "pt" g }
+			  { "options"		"f"		}
+			  { "accuracy"		"0-4"		}
+			  { "rate"		"0-7"		}
+			  { "bandwidth"		"0-4"		}
+			  { "sampling"		"1-8192"	}
+			  { "components"	"pt"		}
 			}
 #
 # Convert battery sensor reading to battery voltage
@@ -104,17 +102,16 @@ oss_interface -id 0x00010022 -speed 115200 -length 56 \
 
 oss_command config 0x01 {
 #
-# Sensor configuration; this is just a blob of blocks:
+# Sensor configuration, no arguments -> poll
 #
-#	ssssllll	sss -> sensor number, lllll -> bytes that follow - 1
-#	ppppvvvv	ppp -> parameter, vvvv -> value
+#	pppvvvvvvvvvvvvv	ppp -> parameter, vvvv -> value
 #
 	blob	confdata;
 }
 
 oss_command wake 0x02 {
 #
-# Query or set the device status
+# WOR wakeup
 #
 	byte	dummy;
 }
@@ -170,7 +167,7 @@ oss_command ap 0x08 {
 
 oss_command mreg 0x09 {
 #
-# Debugging
+# MPU9250 register access
 #
 	byte	what;
 	byte	regn;
@@ -192,9 +189,13 @@ oss_message status 0x03 {
 	byte 	battery;
 	byte	sset;
 	byte	status;
-	# 21 bytes so far
-	# sensor conf, all sensors, 17 nibbles, 9 bytes, total = 30 (39)
-	blob	sstat;
+}
+
+oss_message config 0x01 {
+#
+# Sensor configuration
+#
+	blob	confdata;
 }
 
 oss_message report 0x05 {
@@ -286,51 +287,7 @@ proc parse_empty { } {
 	}
 }
 
-proc parse_grade { sel } {
-
-	variable SNAMES
-
-	set val [oss_parse -skip -match {^[[:alpha:]]+} -return 1]
-
-	if { $val == "" } {
-		error "argument of -$sel illegal or missing"
-	}
-
-	if [catch { oss_keymatch $val $SNAMES(G) } k] {
-		error "$val is not a legal option for -$sel"
-	}
-
-	set ix [lsearch -exact $SNAMES(G) $k]
-
-	if { $ix < 0 } {
-		# impossible
-		error "impossible in parse_grade"
-	}
-
-	return $ix
-}
-
-proc parse_bool { sel } {
-
-	set val [oss_parse -skip -match {^[[:alnum:]]+} -return 1]
-
-	if [catch { expr { $val + 0 } } num] {
-		set val [string tolower $val]
-		if { $val == "y" || $val == "yes" } {
-			return 1
-		}
-		if { $val == "n" || $val == "no" } {
-			return 0
-		}
-		error "illegal boolean value $val for -$sel"
-	} elseif { $num != 0 } {
-		return 1
-	}
-
-	return 0
-}
-
-proc parse_component { sel cmp } {
+proc parse_options { sel cmp } {
 
 	set val [oss_parse -skip -match {^[[:alpha:]]+} -return 1]
 
@@ -418,6 +375,24 @@ proc parse_cmd { line } {
 
 ##############################################################################
 
+proc help_config { } {
+
+	variable SNAMES
+	variable CPARAMS
+
+	set res ""
+
+	foreach s $SNAMES(S) {
+		append res "${s}:\n"
+		foreach it $CPARAMS($s) {
+			lassign $it pmt val
+			append res "[tab_string $pmt 14] $val\n"
+		}
+	}
+
+	oss_ttyout $res
+}
+
 proc parse_cmd_configure { } {
 
 	variable SNAMES
@@ -432,54 +407,56 @@ proc parse_cmd_configure { } {
 			# this is the end
 			break
 		}
+		if { $what == "h" || $what == "help" } {
+			help_config
+			return
+		}
+
 		set k [oss_keymatch $what $SNAMES(S)]
 		# handled already?
 		if [info exists handled($k)] {
 			error "duplicate $k"
 		}
 		set handled($k) ""
-		set rs [do_config $k]
-
-		if { $rs == "" } {
-			error "null configuration for $k"
-		}
-
-		set le [llength $rs]
 		# sensor number
 		set ix [lsearch -exact $SNAMES(S) $k]
 		if { $ix < 0 } {
-			# this cannot happen
-			error "impossible: $k not found in \"$SNAMES(S)\""
+			# impossible
+			error "no such sensor: $k"
 		}
-		if { $le > 0 } {
-			# make it length - 1
-			incr le -1
-			lappend bb [expr { ($ix << 4) | $le }]
-			set bb [concat $bb $rs]
+		set rs [do_config $k]
+		if { $rs == "" } {
+			error "no parameters specified for $sen"
 		}
+		lappend bb $ix
+		set bb [concat $bb $rs]
 	}
 
 	parse_empty
 
-	# issue the command
-	if { $bb == "" } {
-		error "nothing to configure"
-	}
-
+	# empty is OK
 	oss_issuecommand 0x01 [oss_setvalues [list $bb] "config"]
 }
 
 proc do_config { sen } {
 #
-# Generate the blob sequence for the given sensor
+# Generate the configuration blob for the specified sensor
 #
 	variable CPARAMS
-	variable COMPS
 
-	lassign $CPARAMS($sen) klist modes
+	set klist ""
+	set mlist ""
 
-	# initialize the blob portion
-	set bb ""
+	set npa 0
+	foreach it $CPARAMS($sen) {
+		lappend klist [lindex $it 0]
+		lappend mlist [lindex $it 1]
+		# calculate the number of parameters
+		incr npa
+	}
+
+	# initialize the parameter mask
+	set pma 0
 
 	while 1 {
 
@@ -490,36 +467,46 @@ proc do_config { sen } {
 		}
 
 		set k [oss_keymatch $tp $klist]
-
-		if [info exists handled($k)] {
+		# parameter index
+		set x [lsearch -exact $klist $k]
+		if { $x < 0 } {
+			# impossible
+			error "no such parameter: $k"
+		}
+		if { [expr { $pma & (1 << $x) }] != 0 } {
 			error "duplicate -$k for $sen"
 		}
 
-		set handled($k) ""
-
-		set ix [lsearch -exact $klist $k]
-		if { $ix < 0 } {
-			error "impossible: $k not found in do_config"
-		}
-		set m [lindex $modes $ix]
-
-		if { $m == "b" } {
-			# boolean
-			set v [parse_bool $k]
-		} elseif { $m == "g" } {
-			set v [parse_grade $k]
+		# update the mask
+		set pma [expr { $pma | (1 << $x) }]
+		# the argument format
+		set mof [lindex $mlist $x]
+		if [regexp {^([[:digit:]]+)-([[:digit:]]+)} $mof mat min max] {
+			# a numerical parameter
+			set pa [parse_value "-$k" $min $max]
+			if { $max > 255 } {
+				set __pa($x) [list \
+					[expr { ($pa >> 8) & 0xff }] \
+						[expr { $pa & 0xff }]]
+			} else {
+				set __pa($x) [list $pa]
+			}
 		} else {
-			# components
-			set v [parse_component $k $m]
+			set pa [parse_options "-$k" $mof]
+			set __pa($x) [list $pa]
 		}
-
-		lappend bb [expr { ($ix << 4) | $v } ]
-		continue
-
 	}
 
-	if { [llength $bb] > 16 } {
-		error "too many settings for $sen"
+	if { $pma == 0 } {
+		return ""
+	}
+
+	set bb [list $pma]
+
+	for { set x 0 } { $x < $npa } { incr x } {
+		if [info exists __pa($x)] {
+			set bb [concat $bb $__pa($x)]
+		}
 	}
 
 	return $bb
@@ -624,10 +611,8 @@ proc parse_cmd_sample { } {
 proc parse_cmd_stream { } {
 
 	set rs [do_config "imu"]
-	set le [llength $rs]
-	if { $le } {
-		incr le -1
-		# IMU is number zero, so the config sequence looks right
+	if { $rs != "" } {
+		set bb [concat [list 0] $rs]
 		set bb [concat [list $le] $rs]
 	} else {
 		set bb ""
@@ -739,8 +724,6 @@ proc show_msg { code ref msg } {
 		return
 	}
 
-	# a standard message
-
 	set str [oss_getmsgstruct $code name]
 
 	if { $str == "" } {
@@ -777,53 +760,6 @@ proc sectoh { se } {
 	return [join $ti ","]
 }
 
-proc sset_to_string { ss } {
-#
-# Sensor set to string
-#
-	variable SNAMES(A)
-
-	set ns [string length $SNAMES(A)]
-	set rs ""
-
-	for { set i 0 } { i < $ns } { incr i } {
-		if { [expr { $ss & (1 << $i) }] } {
-			append rs [string index $SNAMES(A) $i]
-		} else {
-			append rs "."
-		}
-	}
-
-	return $rs
-}
-
-proc read_nibbles { blb } {
-
-	# initialize: at even nibble
-	set nib 1
-	set ble [llength $blb]
-	yield
-	while 1 {
-		if $nib {
-			# get next byte
-			if { $ble == 0 } {
-				# done
-				return ""
-			}
-			set cby [lindex $blb 0]
-			set blb [lrange $blb 1 end]
-			incr ble -1
-			# odd nible
-			yield [expr { ($cby >> 4 ) & 0xf }]
-			set nib 0
-		} else {
-			# odd nible
-			yield [expr { $cby & 0xf }]
-			set nib 1
-		}
-	}
-}
-
 proc sensor_names { act } {
 #
 # Names of active sensors
@@ -848,12 +784,7 @@ proc sensor_names { act } {
 
 proc show_msg_status { msg } {
 
-	variable SNAMES
-	variable CPARAMS
-	variable COMPS
-
-	lassign [oss_getvalues $msg "status"] upt tak frm mim rat bat sns sta \
-		spa
+	lassign [oss_getvalues $msg "status"] upt tak frm mim rat bat sns sta
 
 	if { $sta == 0 } {
 		set sta "IDLE"
@@ -871,61 +802,90 @@ proc show_msg_status { msg } {
 	append res "  Active:      [sensor_names $sns]\n"
 	append res "  Taken:       $tak @ $rat\n"
 
-	# Now go through sensor configs, the length is in fact static, but we
-	# use a blob for that
+	oss_out $res
+}
 
-	set sn [llength $SNAMES(S)]
+proc show_msg_config { msg } {
 
-	# set the coroutine for reading nibbles from the blob
-	coroutine read_next_param read_nibbles $spa
+	variable SNAMES
+	variable CPARAMS
 
+	set spa  [lindex [oss_getvalues $msg "config"] 0]
+	set res ""
 	set er 0
-	for { set i 0 } { $i < $sn } { incr i } {
-		set sname [lindex $SNAMES(S) $i]
-		append res "\n  Sensor $sname:\n"
-		lassign $CPARAMS($sname) parnames partypes
-		set j 0
-		foreach pname $parnames {
-			set ptype [lindex $partypes $j]
-			incr j
-			set val [read_next_param]
-			if { $val == "" } {
-				# premature end
+
+	while { $spa != "" && !$er } {
+		# the sensor
+		set sn [lindex $spa 0]
+		# parameter mask
+		set pm [lindex $spa 1]
+		if { $sn >= [llength $SNAMES(S)] || $pm == 0 } {
+			# something wrong
+			set er 1
+			break
+		}
+		set spa [lrange $spa 2 end]
+		set sna [lindex $SNAMES(S) $sn]
+		append res "Sensor $sna:\n"
+		set plist $CPARAMS($sna)
+		set pn 0
+		while { $pm != 0 } {
+		    if { [expr { $pm & 1 }] != 0 } {
+			if { $pn >= [llength $plist] } {
+				# something wrong
 				set er 1
 				break
 			}
-			if { $ptype == "g" } {
-				# transform into a symbolic grade
-				set gg [lindex $SNAMES(G) $val]
-				if { $gg == "" } {
-					set gg "illegal"
+			lassign [lindex $plist $pn] pname pvals
+			append res "  [tab_string $pname 14]:"
+			if [regexp {^([[:digit:]]+)-([[:digit:]]+)} $pvals \
+			    ma min max] {
+				# numerical
+				set va [lindex $spa 0]
+				if { $va == "" } {
+					# something wrong
+					set er 1
+					break
 				}
-			} elseif { $ptype == "b" } {
-				if $val {
-					set gg "YES"
-				} else {
-					set gg "NO"
+				set spa [lrange $spa 1 end]
+				if { $max > 255 } {
+					# two bytes
+					set vb [lindex $spa 0]
+					if { $vb == "" } {
+						# something wrong
+						set er 1
+						break
+					}
+					set va [expr { ($va << 8) | $vb }]
+					set spa [lrange $spa 1 end]
 				}
+				set va [expr { $va }]
 			} else {
-				# components
-				set cl [string length $ptype]
-				set gg ""
+				# options
+				set vb [lindex $spa 0]
+				if { $vb == "" } {
+					set er 1
+					break
+				}
+				set spa [lrange $spa 1 end]
+				set cl [string length $pvals]
+				set va ""
 				for { set k 0 } { $k < $cl } { incr k } {
-					if { [expr { (1 << $k) & $val }] } {
-						append gg \
-						    [string index $ptype $k]
+					if { [expr { (1 << $k) & $vb }] } {
+						append va \
+						    [string index $pvals $k]
 					} else {
-						append gg "."
+						append va "."
 					}
 				}
 			}
-			append res "    [tab_string $pname 12] $gg\n"
+			append res $va
+			append res "\n"
+		    }
+		    set pm [expr { ($pm >> 1) & 0x7f }]
+		    incr pn
 		}
-		if $er { break }
 	}
-
-	# delete the coroutine
-	catch { rename read_next_param "" }
 
 	if $er {
 		append res "\n ... list truncated, data too short\n"

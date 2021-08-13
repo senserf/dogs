@@ -23,5 +23,6 @@
 
 void ossint_motion_event (address, word);
 word ossint_send_status ();
+word ossint_send_config ();
 
 #endif

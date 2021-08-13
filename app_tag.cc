@@ -38,6 +38,7 @@ fsm rf_monitor {
 
 	state RFM_RUN_ON:
 
+#ifndef __SMURPH__
 		if (RadioActiveCD >= ACT_COUNTDOWN) {
 			// Turn off
 			MonStat = MS_OFF;
@@ -49,7 +50,7 @@ fsm rf_monitor {
 		}
 
 		RadioActiveCD++;
-
+#endif
 		if (--BatCnt != 0)
 			sameas RFM_ON;
 
@@ -202,9 +203,16 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 		case command_config_code:
 
-			// Configure sensors
-			ret = sensing_configure (
-			    &(((const command_config_t*) par)->confdata), pml);
+			if (((const command_config_t*) par)->confdata . size ==
+			 	0) {
+				if ((ret = ossint_send_config ()) == ACK_OK)
+					return;
+			} else {
+				// Configure sensors
+				ret = sensing_configure (
+			    		&(((const command_config_t*) par)->
+						confdata), pml);
+			}
 			break;
 
 		case command_onoff_code:

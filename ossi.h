@@ -75,6 +75,11 @@ typedef struct {
 // Message structures
 // ==================
 
+#define	message_config_code	1
+typedef struct {
+	blob	confdata;
+} message_config_t;
+
 #define	message_sblock_code	128
 typedef struct {
 	lword	data [12];
@@ -99,7 +104,6 @@ typedef struct {
 	byte	battery;
 	byte	sset;
 	byte	status;
-	blob	sstat;
 } message_status_t;
 
 #define	message_report_code	5

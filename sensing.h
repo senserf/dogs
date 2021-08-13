@@ -148,7 +148,7 @@ extern mpu9250_desc_t mpu9250_desc;
 
 word sensing_turn (byte);
 word sensing_configure (const blob*, sint);
-word sensing_status (byte*);
+word sensing_getconf (byte*);
 word sensing_report (byte*, address);
 
 #define	sensing_all_off()	sensing_turn (0x00)
