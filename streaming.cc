@@ -204,6 +204,7 @@ fsm streaming_generator {
 		}
 		
 		CBuilt -> block [CFill++] = encode (data);
+		SamplesTaken++;
 
 		if (CFill == STRM_NCODES) {
 			// This sets CBuilt to NULL and so on
@@ -371,6 +372,7 @@ word streaming_start (const command_stream_t *par, word pml) {
 		sensing_turn (0x81);
 	}
 
+// trace ("CONF: %u %u %u", mpu9250_active, mpu9250_desc . components, mpu9250_desc . evtype);
 	if (!mpu9250_active || mpu9250_desc . components != 1 ||
 	    mpu9250_desc . evtype != 2)
 		// The only legit component is the accel; we expect exactly
@@ -381,11 +383,13 @@ word streaming_start (const command_stream_t *par, word pml) {
 		// Clear everything; we probably shouldn't be restarting
 		streaming_stop ();
 
-	LastGenerated = 0;
+	LastGenerated = SamplesTaken = 0;
+	SamplesPerMinute = mpu9250_desc.rate;
 
 	if (runfsm streaming_generator &&
 	    (TSender = runfsm streaming_trainsender)) {
 		Status = STATUS_STREAMING;
+		SamplesTaken = 0;
 		LTrain = 0;
 		powerup ();
 		return ACK_OK;

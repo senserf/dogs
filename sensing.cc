@@ -75,6 +75,8 @@ static const byte mpu9250_desc_length [] = {
 
 static word mpu9250_conf [] =       { 0, 32, 6, 0, 3, 7, 1 };
 static const byte mpu9250_clen [] = { 0,  0, 0, 0, 0, 0, 0 };
+static const word mpu9250_srpm [] = { 14, 29, 59, 117, 235, 469, 938, 1875,
+					3750, 7500, 15000, 30000 };
 
 mpu9250_desc_t mpu9250_desc;
 
@@ -164,8 +166,7 @@ byte Sensors;
 fsm mpu9250_sampler {
 //
 // This is used for detecting motion events; otherwise, the sensor is sampled
-// at the moment of report. The FSM can only be running if mpu9250_desc.evtype
-// is 1.
+// at the moment of report
 //
 	state MP_MOTION:
 
@@ -201,17 +202,27 @@ static void sensor_on_mpu9250 () {
 
 	// Sanity
 	if (mpu9250_conf [6] > 0xf)
-		mpu9250_conf [5] = 0;
+		mpu9250_conf [6] = 0;
 
-	// Make sense of the event option
+	// Make sense of the options
 	if ((mpu9250_conf [0] & 0x04)) {
-		// Motion detect, event type 1
+		// Motion detect, event type 1, takes priority
 		mpu9250_desc.evtype = 1;
 		options |= MPU9250_LP_MOTION_DETECT | MPU9250_SEN_ACCEL;
 	} else if (mpu9250_conf [0] & 0x02) {
 		// Sync data read, event type 2
 		mpu9250_desc.evtype = 2;
 		options |= MPU9250_SYNC_READ;
+		// Calculate and store the data rate in samples per minute
+		mpu9250_desc.rate = (mpu9250_conf [0] & 0x01) ?
+			// Low-power mode
+			scaled_option (mpu9250_srpm, mpu9250_conf [2]) :
+				// Normal mode
+				(1024 * 60) / (mpu9250_conf [5] + 1);
+#if EMULATE_SENSORS
+		mpu9250_desc.sdel = (1024 * 60) / mpu9250_desc.rate;
+#endif
+			
 	} else {
 		// None, no events
 		mpu9250_desc.evtype = 0;
@@ -230,7 +241,7 @@ static void sensor_on_mpu9250 () {
 	if (mpu9250_conf [6] & 8)
 		options |= MPU9250_SEN_TEMP;
 
-	// Include sampling rate
+	// And paste it into the options
 	options |= ((lword) mpu9250_conf [5]) << 24;
 
 	// Forced low power mode
@@ -749,7 +760,7 @@ static void rds (word st, word sn, address ret)	{ *ret = (word)(les_value++); }
 
 void ready_mpu9250 (word st) {
 
-	delay (mpu9250_conf [5] + 1, st);
+	delay (mpu9250_desc.sdel, st);
 	release;
 }
 

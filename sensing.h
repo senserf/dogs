@@ -79,6 +79,12 @@
 
 typedef struct {
 	byte evtype, components;
+	// Streaming rate in samples per minute
+	word rate;
+#if EMULATE_SENSORS
+	// Pre-computed (rough) inter sample delay for emulation
+	word sdel;
+#endif
 	// Only needed in motion detection mode
 	word motion_events;
 } mpu9250_desc_t;

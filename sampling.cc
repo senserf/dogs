@@ -97,8 +97,6 @@ void sampling_stop () {
 
 	killall (sampling_generator);
 	killall (sampling_corrector);
-	SamplesTaken = SampleStartSecond = 0;
-	SamplesPerMinute = 0;
 	Status = STATUS_IDLE;
 }
 

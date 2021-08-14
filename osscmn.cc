@@ -11,14 +11,6 @@
 sint 	RFC;
 byte	LastRef;
 
-#ifdef	TAG_DEVICE
-// RF duty cycling
-extern	byte RadioActiveCD;
-#define	mark_active	RadioActiveCD = 0
-#else
-#define	mark_active	CNOP
-#endif
-
 fsm radio_receiver {
 
 	state RS_LOOP:
@@ -53,7 +45,6 @@ address osscmn_xpkt (byte code, byte ref, word len) {
 		pkt_osshdr (msg) -> code = code;
 		pkt_osshdr (msg) -> ref = ref;
 	}
-	mark_active;
 	return msg;
 }
 

@@ -59,13 +59,23 @@
 #define	ACK_AP_FMT		130
 #define	ACK_AP_TOOLONG		131
 
+#ifdef	TAG_DEVICE
+// RF duty cycling
+extern	byte RadioActiveCD;
+#define	mark_active	RadioActiveCD = 0
+#else
+#define	mark_active	CNOP
+#endif
+
 #define	set_lbt(pkt,boo)	set_pxopts (pkt, 0, boo, RADIO_DEFAULT_POWER)
 
 #if (RADIO_OPTIONS & RADIO_OPTION_PXOPTIONS)
-#define	tcv_endpx(msg,boo)	do { set_lbt (msg, boo); tcv_endp (msg); } \
-					while (0)
+#define	tcv_endpx(msg,boo)	do { set_lbt (msg, boo); \
+				     tcv_endp (msg); \
+				     mark_active; \
+				} while (0)
 #else
-#define	tcv_endpx(msg,boo)	tcv_endp (msg)
+#define	tcv_endpx(msg,boo)	do { tcv_endp (msg); mark_active; } while (0)
 #endif
 
 #endif
