@@ -21,12 +21,15 @@ static	lword		LastSent, LastGenerated;
 static	strblk_t	*BHead, *BTail, *CBuilt, *CCar;
 static	word		NQueued, NCars, CFill;
 static	aword		TSender;
-static	byte		TSStat, LTrain, Dropped;
+static	byte		TSStat, LTrain, TFlags;
+
+// Can be used to normalize the values, e.g., for compression
+#define	ACCBIAS		0x0
 
 static inline lword encode (address data) {
-	return (((lword)(data [0] & 0xffc0)) << 16) |
-	       (((lword)(data [1] & 0xffc0)) <<  6) |
-	       (((lword)(data [2] & 0xffc0)) >>  4) ;
+	return (((lword)((data [0] + ACCBIAS) & 0xffc0)) << 16) |
+	       (((lword)((data [1] + ACCBIAS) & 0xffc0)) <<  6) |
+	       (((lword)((data [2] + ACCBIAS) & 0xffc0)) >>  4) ;
 }
 
 static void delete_front () {
@@ -58,12 +61,12 @@ static void add_current () {
 
 	// Make sure the queue is never longer than max and the offset
 	// is kosher
-	while (NQueued >= STRM_MAX_QUEUED || (BHead != NULL && (LastGenerated -
-	    BHead -> bn >= STRM_MAX_BLOCKSPAN))) {
+	while (NQueued >= TagParams.max_queued ||
+	  (BHead != NULL && (LastGenerated - BHead -> bn >=
+	    STRM_MAX_BLOCKSPAN))) {
 		delete_front ();
-		// To include in the EOT packet
-		if (Dropped < 255)
-			Dropped++;
+		StreamStats . queue_drops ++;
+		TFlags |= STRM_TFLAG_QDR;
 	}
 
 	if (BTail == NULL)
@@ -112,9 +115,8 @@ static void fill_eot (address pkt) {
 		(word) (LastSent - BHead -> bn + 1);
 	// Note that offset == 0 means no blocks can be retransmitted (LastSent
 	// is below the head), 1 means head == LastSent
-	pay -> clock = (word) seconds ();
-	pay -> dropped = Dropped;
 	pay -> voltage = VOLTAGE;
+	pay -> flags = TFlags;
 #undef pay
 }
 
@@ -128,15 +130,15 @@ fsm streaming_trainsender {
 		CCar = BHead;
 		TSStat = STRM_TSSTAT_NONE;
 		LTrain++;
-		Dropped = 0;
+		TFlags = 0;
 
 	state ST_NEXT:
 
 		address pkt;
 
-		if (NCars >= STRM_TRAIN_LENGTH) {
+		if (NCars >= TagParams.train_length) {
 			TSStat = STRM_TSSTAT_WACK;
-			train_space = STRM_MIN_TRAIN_SPACE;
+			train_space = TagParams.min_train_space;
 			sameas ST_ENDTRAIN;
 		}
 
@@ -161,7 +163,7 @@ fsm streaming_trainsender {
 		CCar = CCar -> next;
 		NCars++;
 
-		delay (STRM_CAR_SPACE, ST_NEXT);
+		delay (TagParams.car_space, ST_NEXT);
 		release;
 
 	state ST_ENDTRAIN:
@@ -186,6 +188,87 @@ fsm streaming_trainsender {
 			train_space++;
 }
 
+#if MPU9250_FIFO_BUFFER_SIZE
+
+// Use FIFO
+static word sg_delay = 4;
+
+static void fifo_start () {
+
+	lword d;
+
+	// Calculate a safe delay
+	d = (1024 * 60 * (MPU9250_FIFO_BUFFER_SIZE/2)) / mpu9250_desc.rate;
+
+	sg_delay = d > 1024 ? 1024 : (word) d;
+
+	// diag ("SD: %u", sg_delay);
+
+	mpu9250_fifo_start ();
+}
+
+#define	fifo_stop()	mpu9250_fifo_stop ()
+
+fsm streaming_generator {
+
+	word data [3 * MPU9250_FIFO_BUFFER_SIZE];
+
+	state ST_TAKE:
+
+		word nw, *dt;
+
+		if ((nw = mpu9250_fifo_get (data, MPU9250_FIFO_BUFFER_SIZE)) ==
+		    0) {
+			delay (sg_delay, ST_TAKE);
+			release;
+		}
+
+		if (nw == MPU9250_FIFO_OVERFLOW) {
+			StreamStats . fifo_overflows ++;
+			TFlags |= STRM_TFLAG_FOV;
+			delay (1, ST_TAKE);
+			release;
+		}
+
+		dt = data;
+
+		while (nw >= 3) {
+
+			if (CBuilt == NULL) {
+				// Next buffer
+				CBuilt =
+				    (strblk_t*) umalloc (sizeof (strblk_t));
+				if (CBuilt == NULL) {
+					// We have to be smarter than this
+					StreamStats . malloc_failures ++;
+					TFlags |= STRM_TFLAG_MAL;
+					sameas ST_TAKE;
+				}
+				CFill = 0;
+			}
+		
+			CBuilt -> block [CFill++] = encode (dt);
+			SamplesTaken++;
+
+			if (CFill == STRM_NCODES) {
+				// This sets CBuilt to NULL
+				add_current ();
+			}
+
+			dt += 3;
+			nw -= 3;
+		}
+
+	sameas ST_TAKE;
+}
+
+#else
+
+// No FIFO
+
+#define	fifo_start()	CNOP
+#define	fifo_stop()	CNOP
+
 fsm streaming_generator {
 
 	state ST_TAKE:
@@ -197,9 +280,12 @@ fsm streaming_generator {
 		if (CBuilt == NULL) {
 			// Next buffer
 			CBuilt = (strblk_t*) umalloc (sizeof (strblk_t));
-			if (CBuilt == NULL)
+			if (CBuilt == NULL) {
 				// We have to be smarter than this
+				StreamStats . malloc_failures ++;
+				TFlags |= STRM_TFLAG_MAL;
 				sameas ST_WAIT;
+			}
 			CFill = 0;
 		}
 		
@@ -215,6 +301,8 @@ fsm streaming_generator {
 
 		ready_mpu9250 (ST_TAKE);
 }
+
+#endif	/* FIFO or no FIFO */
 
 void streaming_tack (byte ref, byte *ab, word plen) {
 //
@@ -372,7 +460,6 @@ word streaming_start (const command_stream_t *par, word pml) {
 		sensing_turn (0x81);
 	}
 
-// trace ("CONF: %u %u %u", mpu9250_active, mpu9250_desc . components, mpu9250_desc . evtype);
 	if (!mpu9250_active || mpu9250_desc . components != 1 ||
 	    mpu9250_desc . evtype != 2)
 		// The only legit component is the accel; we expect exactly
@@ -386,16 +473,19 @@ word streaming_start (const command_stream_t *par, word pml) {
 	LastGenerated = SamplesTaken = 0;
 	SamplesPerMinute = mpu9250_desc.rate;
 
-	if (runfsm streaming_generator &&
-	    (TSender = runfsm streaming_trainsender)) {
+	fifo_start ();
+	if ((TSender = runfsm streaming_trainsender) &
+	    runfsm streaming_generator) {
 		Status = STATUS_STREAMING;
 		SamplesTaken = 0;
 		LTrain = 0;
+		bzero (&StreamStats, sizeof (StreamStats));
 		powerup ();
 		return ACK_OK;
 	}
 
 	streaming_stop ();
+	fifo_stop ();
 	return ACK_NORES;
 }
 
@@ -406,6 +496,7 @@ void streaming_stop () {
 
 	killall (streaming_generator);
 	killall (streaming_trainsender);
+	fifo_stop ();
 
 	if (CBuilt) {
 		ufree (CBuilt);

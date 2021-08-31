@@ -36,3 +36,15 @@
 #endif
 
 // ============================================================================
+
+#define	HIBERNATE_ON_START		0	// 1
+#define	AUTO_WOR_COUNTDOWN		0	// 30 (seconds)
+
+#ifdef __SMURPH__
+
+#undef	HIBERNATE_ON_START
+#define	HIBERNATE_ON_START		0
+#undef	AUTO_WOR_COUNTDOWN
+#define	AUTO_WOR_COUNTDOWN		0
+
+#endif

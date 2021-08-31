@@ -23,7 +23,7 @@
 #define	ACT_RXON_INTERVAL	10		// 50
 #define	ACT_RXOFF_INTERVAL	1500		// 990 (adds to 1000)
 #define	ACT_WCLEAR_INTERVAL	512		// To clear wake messages
-#define	ACT_COUNTDOWN		15		// Amounts to 30 seconds
+#define	ACT_COUNTDOWN		(AUTO_WOR_COUNTDOWN / 2) // two sec units
 #define	ACT_WAKE_COUNT		768
 #define	ACT_WAKE_SPACE		3		// Millisecs
 #define	ACT_BATTMON_FREQ	255		// x 2 = 512 sec
@@ -53,7 +53,7 @@
 // intrinsic space of the driver with LBT off
 #define	STRM_CAR_SPACE		5
 // Space between EOT packets
-#define	STRM_MIN_TRAIN_SPACE	20
+#define	STRM_MIN_TRAIN_SPACE	16
 #define	STRM_MAX_TRAIN_SPACE	512
 // Max payload of ACK packet
 #define	STRM_MAX_ACKPAY		58
@@ -62,12 +62,10 @@
 #undef	STRM_TRAIN_LENGTH	
 #undef	STRM_MAX_QUEUED
 #undef	STRM_MAP_SIZE
-#undef	STRM_TRAIN_SPACE
 #undef	STRM_MAX_ACKPAY
 #define	STRM_TRAIN_LENGTH	8
 #define	STRM_MAX_QUEUED		16
 #define	STRM_MAP_SIZE		16
-#define	STRM_TRAIN_SPACE	128
 #define	STRM_MAX_ACKPAY		16
 #endif
 
@@ -75,6 +73,11 @@
 #define	STRM_TSSTAT_NONE	0
 #define	STRM_TSSTAT_WDAT	1
 #define STRM_TSSTAT_WACK	2
+
+// Train flags (EOT packet)
+#define	STRM_TFLAG_FOV		1	// FIFO overflow
+#define	STRM_TFLAG_MAL		2	// Malloc failure
+#define	STRM_TFLAG_QDR		4	// Queue drop
 
 typedef	struct strblk_t strblk_t;
 

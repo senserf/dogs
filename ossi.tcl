@@ -54,6 +54,12 @@ set CPARAMS(pressure)	{
 			  { "sampling"		"1-8192"	}
 			  { "components"	"pt"		}
 			}
+
+#
+# The defaults
+#
+set CPARAMS(0)	{ 0 32 6 0 3 7 1 }
+
 #
 # Convert battery sensor reading to battery voltage
 #
@@ -62,7 +68,7 @@ proc sensor_to_voltage { val } {
 	# integer volts
 	set g [expr { ($val >> 5) & 0xf }]
 	set f [expr { double($val & 0x1f) / 32.0 }]
-	return [format "%4.2fV" [expr { double($g) + $f }]]
+	return [format "%4.2f" [expr { double($g) + $f }]]
 }
 
 ###############################################################################
@@ -94,7 +100,7 @@ set ACKCODE(131)	"command too long"
 
 # (TODO) check if the speed can be increased
 
-oss_interface -id 0x00010022 -speed 115200 -length 56 \
+oss_interface -id 0x00010022 -speed 256000 -length 56 \
 	-parser { parse_cmd show_msg start_up }
 
 #############################################################################
@@ -174,6 +180,13 @@ oss_command mreg 0x09 {
 	byte	value;
 }
 
+oss_command setp 0x0a {
+#
+# Set parameters
+#	
+	blob	params;
+}
+
 #############################################################################
 #############################################################################
 
@@ -183,6 +196,9 @@ oss_message status 0x03 {
 #
 	lword	uptime;
 	lword	taken;
+	lword	fover;
+	lword	mfail;
+	lword	qdrop;
 	word	freemem;
 	word	minmem;
 	word	rate;
@@ -236,6 +252,10 @@ oss_message mreg 0x09 {
 	blob	data;
 }
 
+oss_message setp 0x0a {
+	blob	params;
+}
+
 oss_message sblock 0x80 {
 #
 # A streaming block
@@ -249,9 +269,8 @@ oss_message etrain 0x81 {
 #
 	lword	last;
 	word	offset;
-	word	clock;
-	byte	dropped;
 	byte	voltage;
+	byte	flags;
 }
 
 # streaming blocks interpreted separately (in a non-standard way)
@@ -306,6 +325,23 @@ proc parse_options { sel cmp } {
 	return $re
 }
 
+proc parse_setparam { } {
+
+	set val [oss_parse -number -match "^=" -skip -number]
+	if { $val == "" } {
+		error "param=value expected"
+	}
+
+	set par [lindex $val 0]
+	set val [lindex $val 3]
+
+	if [catch { oss_valint $par 0 15 } par] {
+		error "illegal parameter number, $par"
+	}
+
+	return [list $par $val]
+}
+
 ###############################################################################
 # Commands ####################################################################
 ###############################################################################
@@ -322,10 +358,13 @@ set CMDS(stop)		"parse_cmd_stop"
 set CMDS(status)	"parse_cmd_status"
 set CMDS(ap)		"parse_cmd_ap"
 set CMDS(mreg)		"parse_cmd_mreg"
+set CMDS(setp)		"parse_cmd_setp"
 
 variable LASTCMD	""
 
 variable CTiming	0
+
+variable StrFD		""
 
 proc parse_cmd { line } {
 
@@ -393,6 +432,8 @@ proc help_config { } {
 	oss_ttyout $res
 }
 
+
+
 proc parse_cmd_configure { } {
 
 	variable SNAMES
@@ -425,10 +466,6 @@ proc parse_cmd_configure { } {
 			error "no such sensor: $k"
 		}
 		set rs [do_config $k]
-		if { $rs == "" } {
-			error "no parameters specified for $sen"
-		}
-		lappend bb $ix
 		set bb [concat $bb $rs]
 	}
 
@@ -443,6 +480,7 @@ proc do_config { sen } {
 # Generate the configuration blob for the specified sensor
 #
 	variable CPARAMS
+	variable SNAMES
 
 	set klist ""
 	set mlist ""
@@ -454,6 +492,10 @@ proc do_config { sen } {
 		# calculate the number of parameters
 		incr npa
 	}
+
+	# sensor number
+	set sn [lsearch -exact $SNAMES(S) $sen]
+	set bb [list $sn]
 
 	# initialize the parameter mask
 	set pma 0
@@ -484,6 +526,7 @@ proc do_config { sen } {
 		if [regexp {^([[:digit:]]+)-([[:digit:]]+)} $mof mat min max] {
 			# a numerical parameter
 			set pa [parse_value "-$k" $min $max]
+			set __pr($x) $pa
 			if { $max > 255 } {
 				set __pa($x) [list \
 					[expr { ($pa >> 8) & 0xff }] \
@@ -494,18 +537,19 @@ proc do_config { sen } {
 		} else {
 			set pa [parse_options "-$k" $mof]
 			set __pa($x) [list $pa]
+			set __pr($x) $pa
 		}
 	}
 
-	if { $pma == 0 } {
-		return ""
-	}
-
-	set bb [list $pma]
+	lappend bb $pma
 
 	for { set x 0 } { $x < $npa } { incr x } {
 		if [info exists __pa($x)] {
 			set bb [concat $bb $__pa($x)]
+			if [info exists CPARAMS($sn)] {
+				# we should remember the settings locally
+				lset CPARAMS($sn) $x $__pr($x)
+			}
 		}
 	}
 
@@ -610,23 +654,78 @@ proc parse_cmd_sample { } {
 
 proc parse_cmd_stream { } {
 
-	set rs [do_config "imu"]
-	if { $rs != "" } {
-		set bb [concat [list 0] $rs]
-		set bb [concat [list $le] $rs]
-	} else {
-		set bb ""
+	variable StrFD
+	variable CPARAMS
+
+	# check for file name (occurring anywhere) and handle it before the
+	# sensor specific arguments
+	set fn [oss_parse -match \
+		{-(file|fil|fi|f)[[:space:]]+([^-][^[:space:]]*)}]
+	if { $fn != "" } {
+		set fn [lindex $fn 2]
+		if { $StrFD != "" } {
+			error "a file is already opened (session in progress?)"
+		}
+		if [catch { open $fn "w" } fd] {
+			error "cannot open $fn, $fd"
+		}
+		fconfigure $fd -buffering line -translation lf
+		set StrFD $fd
 	}
 
-	oss_issuecommand 0x06 [oss_setvalues [list $bb] "stream"]
+	# check for limit
+	set lm [oss_parse -match {-(li|lim|limi|limit)[[:space:]]+} -then \
+		-number -return 2]
+
+	if { $lm != "" } {
+		# verify
+		if [catch { oss_valint $lm 1 } lm] {
+			error "illegal -limit, must be >= 1"
+		}
+		set CPARAMS(0,L) $lm
+	} else {
+		set CPARAMS(0,L) 0
+	}
+
+	# last-received block number
+	set CPARAMS(0,B) 0
+	# stop flag
+	set CPARAMS(0,S) 0
+
+	# let this update the complete local-side config
+	set rs [do_config "imu"]
+	# now prepare the config to send to the device
+	set rs [list 0 0x7f]
+	foreach p $CPARAMS(0) {
+		# they are all single-byte
+		lappend rs $p
+	}
+	oss_issuecommand 0x06 [oss_setvalues [list $rs] "stream"]
+	set tm [timing_start]
+
+	if { $StrFD != "" } {
+		# the header: time, seonsor conf, limit
+		puts $StrFD "$tm [join [lrange $rs 2 end]] $CPARAMS(0,L)"
+	}
+}
+
+proc issue_stop { } {
+
+	variable StrFD
+
+	oss_issuecommand 0x07 [oss_setvalues [list 0] "stop"]
+
+	if { $StrFD != "" } {
+		catch { close $StrFD }
+		set StrFD ""
+	}
 }
 
 proc parse_cmd_stop { } {
 
 	# no arguments
 	parse_empty
-
-	oss_issuecommand 0x07 [oss_setvalues [list 0] "stop"]
+	issue_stop
 }
 
 proc parse_cmd_mreg { } {
@@ -653,6 +752,39 @@ proc parse_cmd_mreg { } {
 	# write
 	set val [parse_value "value" 0 255]
 	oss_issuecommand 0x09 [oss_setvalues [list 1 $reg $val] "mreg"]
+}
+
+proc parse_cmd_setp { } {
+
+	set pmask 0
+	set bb ""
+
+	while 1 {
+
+		if { [oss_parse -skip -return 0] == "" } {
+			break
+		}
+
+		lassign [parse_setparam] par val
+
+		if { [expr { $pmask & (1 << $par) } ] != 0 } {
+			error "duplicate parameter number $par"
+		}
+
+		set pmask [expr { $pmask | (1 << $par) }]
+
+		lappend bb [expr { ($val >> 8) & 0xff }]
+		lappend bb [expr { $val & 0xff }]
+	}
+
+	if { $bb != "" } {
+		set bb [concat [list [expr { $pmask >> 8 }] \
+			[expr { $pmask & 0xff }]] $bb]
+	}
+
+	parse_empty
+
+	oss_issuecommand 0x0a [oss_setvalues [list $bb] "setp"]
 }
 
 proc parse_cmd_ap { } {
@@ -784,7 +916,8 @@ proc sensor_names { act } {
 
 proc show_msg_status { msg } {
 
-	lassign [oss_getvalues $msg "status"] upt tak frm mim rat bat sns sta
+	lassign [oss_getvalues $msg "status"] upt tak fov mfa qdr frm mim rat \
+		bat sns sta
 
 	if { $sta == 0 } {
 		set sta "IDLE"
@@ -796,7 +929,8 @@ proc show_msg_status { msg } {
 
 	set res "Node status ([get_rss $msg]):\n"
 	append res "  Uptime:      [sectoh $upt]\n"
-	append res "  Battery:     [sensor_to_voltage $bat]\n"
+	append res "  Battery:     [sensor_to_voltage $bat]V\n"
+	append res "  SStats:      F: $fov M: $mfa Q: $qdr\n"
 	append res "  Memory:      F: $frm M: $mim\n"
 	append res "  Status:      $sta\n"
 	append res "  Active:      [sensor_names $sns]\n"
@@ -881,6 +1015,10 @@ proc show_msg_config { msg } {
 			}
 			append res $va
 			append res "\n"
+			if [info exists CPARAMS($sn)] {
+				# we want to remember the config locally
+				lset CPARAMS($sn) $pn $va
+			}
 		    }
 		    set pm [expr { ($pm >> 1) & 0x7f }]
 		    incr pn
@@ -930,6 +1068,44 @@ proc show_msg_report { msg } {
 
 	if [expr { ($layout >> 8) & 0x1 }] {
 		append res [show_report_light data]
+	}
+
+	oss_out $res
+}
+
+proc show_msg_setp { msg } {
+
+	set pms [lindex [oss_getvalues $msg "setp"] 0]
+
+	if { [llength $pms] < 2 } {
+		error "blob too short"
+	}
+
+	set pmask [expr { ([lindex $pms 0] << 8) | [lindex $pms 1] }]
+	set pms [lrange $pms 2 end]
+
+	set par 0
+	set res ""
+
+	while { $pmask != 0 } {
+
+		if { [expr { $pmask & 1 }] } {
+
+			if { [llength $pms] < 2 } {
+				error "blob too short"
+			}
+
+			set val [expr { ([lindex $pms 0] << 8) | 
+				[lindex $pms 1] }]
+
+			set pms [lrange $pms 2 end]
+
+			append res "Parameter [format %2d $par] =\
+				[format %5u $val]  \[[format %04x $val]\]\n"
+		}
+
+		incr par
+		set pmask [expr { $pmask >> 1 }]
 	}
 
 	oss_out $res
@@ -1220,33 +1396,28 @@ proc start_up { } {
 #
 # Send a dummy ap message to initialize the reference counter
 #
-	variable CTiming
-
 	# oss_dump -incoming -outgoing
 	oss_issuecommand 0x08 [oss_setvalues [list 0 0 0 0] "ap"]
-
-	set CTiming [clock milliseconds]
 }
 
-proc timing_out { } {
+proc timing_start { } {
 
 	variable CTiming
 
-	set t $CTiming
 	set CTiming [clock milliseconds]
-	set s [expr { $CTiming / 1000 }]
-	set m [expr { $CTiming - ( $s * 1000 ) }]
-	set r [clock format $s -format "%H:%M:%S"]
-	append r [string range [format "%4.3f" [expr { $m / 1000.0 }]] 1 end]
-	append r " ("
-	append r [format "%4.3f" [expr { ($CTiming - $t) / 1000.0 }]]
-	append r ") -> "
-	return $r
+	return $CTiming
+}
+
+proc timing { } {
+
+	variable CTiming
+
+	return [expr { [clock milliseconds] - $CTiming }]
 }
 
 proc oss_out { msg } {
 
-	oss_ttyout "[timing_out]$msg"
+	oss_ttyout "$msg"
 }
 
 ###############################################################################
@@ -1254,6 +1425,9 @@ proc oss_out { msg } {
 ###############################################################################
 
 proc show_sblock { ref dat } {
+
+	variable StrFD
+	variable CPARAMS
 
 	set dat [lindex [oss_getvalues $dat "sblock"] 0]
 
@@ -1263,26 +1437,44 @@ proc show_sblock { ref dat } {
 	set fm ""
 	for { set i 0 } { $i < 12 } { incr i } {
 		set ci [lindex $dat $i]
-		# turn them into 16-bit floats
-		append fm [to_f16 [expr { ($ci >> 16) & 0xffc0 }]]
-		append fm " "
-		append fm [to_f16 [expr { ($ci >>  6) & 0xffc0 }]]
-		append fm " "
-		append fm [to_f16 [expr { ($ci <<  4) & 0xffc0 }]]
-		append fm "\n"
+		append fm " [format %08X $ci]"
 		set b [expr {  $ci        & 0x0003 }]
 		set bn [expr { $bn |   ($b << $sh) }]
 		incr sh 2
 	}
 
-	oss_out "B: [format %10u $bn]\n$fm"
+	if { $StrFD != "" } {
+		puts $StrFD "[timing] B: $bn$fm"
+	}
+	oss_out "B: [format %10u $bn]"
+
+	if { $bn > $CPARAMS(0,B) } {
+		set CPARAMS(0,B) $bn
+	}
 }
 
 proc show_eot { ref dat } {
 
-	lassign [oss_getvalues $dat "etrain"] last offset sclock drop bat
+	variable StrFD 
+	variable CPARAMS
+
+	lassign [oss_getvalues $dat "etrain"] last offset bat flg
+	set bat [sensor_to_voltage $bat]
+	set flg [format %02X $flg]
+
+	if { $StrFD != "" } {
+		puts $StrFD "[timing] E: $last $offset $bat $flg"
+	}
 
 	oss_out "E: [format %10u $last] [format %5u $offset]\
-		 [format %5u $sclock] [format %3u $drop]\
-			[sensor_to_voltage $bat]"
+		${bat}V [format F=%02x $flg]"
+
+	if { $CPARAMS(0,L) != 0 } {
+		# there is a limit, compute oldest available block number
+		set lb [expr { $last - $offset + 1 }]
+		if { $lb > $CPARAMS(0,L) } {
+			# issue stop
+			issue_stop
+		}
+	}
 }

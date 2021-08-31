@@ -1,6 +1,28 @@
-ARCH CC13XX MB 1 BO {CC1350_LAUNCHXL CC1350_SENSORTAG_150} LM {0 0} LD {0 0} XDEFS {} VDISABLE 0 CMPIS 1 THRD 0 DPBC 0 PFAC Default UDON 1 UDTM 1 YCDN 0 UDPL {} OSON 1 OSNN 0 OSNH 0 VUDF VUEEDATA/data.xml VUOF {} VUSM 1.0 VURI 500 EARG {} EBRG {} OPTTRMCMND xterm OPTGDBCMND {xterm -e %f} OPTERMLINES 1000 OPSYSFILES 3 OPVUEEFILES 3 OPCOMMENT {Info to be returned in EOT:
-- battery status
+ARCH CC13XX MB 1 BO {CC1350_LAUNCHXL CC1350_SENSORTAG_150} LM {0 0} LD {0 0} XDEFS {} VDISABLE 0 CMPIS 1 THRD 0 DPBC 0 PFAC Default UDON 1 UDTM 1 YCDN 0 UDPL {} OSON 1 OSNN 0 OSNH 0 VUDF VUEEDATA/data.xml VUOF {} VUSM 1.0 VURI 500 EARG {} EBRG {} OPTTRMCMND xterm OPTGDBCMND {xterm -e %f} OPTERMLINES 1000 OPSYSFILES 3 OPVUEEFILES 3 OPCOMMENT {UART rate 256000 only works in "-l" mode of PIP, i.e., it doesn't work with Cygwin ttyS.
+To do:
+1. OSS, values dumped to file without showing, with block numbers and time stamps (we will have to reassemble off line anyway). For this, use -file fn argument of stream. Done.
+2. Program reassembler.
+3. Figure out why the first E message doesn't work, even with ample inter-car space (the first message is sent after the same space as a car, or is it?)
+
+ttt B: values (E: A: label)
+
+Output:
+
+time start
+time end
+annotations
+values (holes represented by null
+0.9899 ... ...
+null
+null
+
+... or something like this
 
 
 
-} SESTRING tcv_endp SESTYPE ST SESFILES None SESFILESV 0 SESMAXL 1000 SESMAXC 256 SESBRACKET 5 SESFQNEG 0 SESFQUAL {} SESCASE 1 SESCOHD #FF9A35 SESCOTA #F4FB7B XELPGM {} CC13XXLDSEL GPR CC13XXLDGPRPATH {/cygdrive/d/SOFTWARE/ti/Flash Programmer 2/bin/srfprog.exe} CC13XXLDGPRARG {-t lsidx(0) -e pif -p -f %f.out} MSP430LDSEL {} MSP430LDMSDDEV Automatic MSP430LDMSDDRV tilib MSP430LDMSDGDP None MSP430LDMSDAFU 0 MSP430LDELPPATH Automatic MSP430LDGPRPATH {} MSP430LDGPRARG {}
+
+
+
+
+
+} SESTRING OSS_UART_RATE SESTYPE ST SESFILES None SESFILESV 0 SESMAXL 1000 SESMAXC 256 SESBRACKET 5 SESFQNEG 0 SESFQUAL {} SESCASE 1 SESCOHD #FF9A35 SESCOTA #F4FB7B XELPGM {} CC13XXLDSEL GPR CC13XXLDGPRPATH {D:/SOFTWARE/ti/Flash Programmer 2/bin/srfprog.exe} CC13XXLDGPRARG {-t lsidx(0) -e pif -p -f %f.out} MSP430LDSEL {} MSP430LDMSDDEV Automatic MSP430LDMSDDRV tilib MSP430LDMSDGDP None MSP430LDMSDAFU 0 MSP430LDELPPATH Automatic MSP430LDGPRPATH {} MSP430LDGPRARG {}

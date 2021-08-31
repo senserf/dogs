@@ -41,6 +41,9 @@ word ossint_send_status () {
 //
 //	lword	uptime;
 //	lword	taken;		[samples taken]
+//	lword	fover;
+//	lword	mfail;
+//	lword	qdrop;
 //	word	freemem;
 //	word	mnimem;
 //	word	rate;		[Samples/Takes per minute]
@@ -58,6 +61,9 @@ word ossint_send_status () {
 	pmt = (message_status_t*) pkt_payload (msg);
 	pmt->uptime = seconds ();
 	pmt->taken = SamplesTaken;
+	pmt->fover = StreamStats . fifo_overflows;
+	pmt->mfail = StreamStats . malloc_failures;
+	pmt->qdrop = StreamStats . queue_drops;
 	pmt->freemem = memfree (0, &(pmt->minmem));
 	pmt->rate = SamplesPerMinute;
 	pmt->battery = VOLTAGE;

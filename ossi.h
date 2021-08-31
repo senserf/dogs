@@ -27,6 +27,11 @@ typedef struct {
 	blob	confdata;
 } command_config_t;
 
+#define	command_setp_code	10
+typedef struct {
+	blob	params;
+} command_setp_t;
+
 #define	command_wake_code	2
 typedef struct {
 	byte	dummy;
@@ -80,6 +85,11 @@ typedef struct {
 	blob	confdata;
 } message_config_t;
 
+#define	message_setp_code	10
+typedef struct {
+	blob	params;
+} message_setp_t;
+
 #define	message_sblock_code	128
 typedef struct {
 	lword	data [12];
@@ -89,15 +99,17 @@ typedef struct {
 typedef struct {
 	lword	last;
 	word	offset;
-	word	clock;
-	byte	dropped;
 	byte	voltage;
+	byte	flags;
 } message_etrain_t;
 
 #define	message_status_code	3
 typedef struct {
 	lword	uptime;
 	lword	taken;
+	lword	fover;
+	lword	mfail;
+	lword	qdrop;
 	word	freemem;
 	word	minmem;
 	word	rate;

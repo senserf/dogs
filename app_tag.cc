@@ -29,6 +29,17 @@ static	byte  MonStat, MonWake, MonRef, BatCnt = 1;
 
 // ============================================================================
 
+tag_params_t	TagParams = {
+				STRM_TRAIN_LENGTH,
+				STRM_MAX_QUEUED,
+				STRM_CAR_SPACE,
+				STRM_MIN_TRAIN_SPACE,
+			};
+
+stream_stats_t	StreamStats;
+
+// ============================================================================
+
 fsm rf_monitor {
 
 	state RFM_ON:
@@ -38,7 +49,8 @@ fsm rf_monitor {
 
 	state RFM_RUN_ON:
 
-#ifndef __SMURPH__
+#if ACT_COUNTDOWN
+		// Disabled if ACT_COUNTODOWN (AUTO_WOR_COUNTDOWN) is zero
 		if (RadioActiveCD >= ACT_COUNTDOWN) {
 			// Turn off
 			MonStat = MS_OFF;
@@ -171,6 +183,68 @@ void do_mreg (const command_mreg_t *par, word pml) {
 
 // ============================================================================
 
+static word send_params () {
+
+	address msg;
+	message_setp_t *pmt;
+	word pmask;
+	sint i;
+
+	if ((msg = osscmn_xpkt (message_setp_code, LastRef,
+		sizeof (message_setp_t) + sizeof (TagParams) + 2)) == NULL)
+			return ACK_NORES;
+
+	pmt = (message_setp_t*) pkt_payload (msg);
+	pmt->params.size = sizeof (TagParams) + 2;
+	pmask = 0;
+
+	for (i = 0; i < sizeof (TagParams) / 2; i++) {
+		pmask |= (1 << i);
+		((word*)(pmt->params.content)) [1 + i] =
+			ntohs (((word*)&TagParams) [i]);
+	}
+
+	((word*)(pmt->params.content)) [0] = ntohs (pmask);
+
+	tcv_endpx (msg, YES);
+
+	return ACK_OK;
+}
+
+static word set_params (const blob *pms, sint len) {
+
+	word *buf, pmask;
+	sint par;
+
+	if (len < pms->size + 2)
+		return ACK_LENGTH;
+
+	buf = (word*)(pms->content);
+	len = pms->size / 2 - 1;
+
+	pmask = htons (*buf);
+	buf++;
+
+	par = 0;
+	while (pmask) {
+		if (pmask & 1) {
+			if (len <= 0)
+				return ACK_LENGTH;
+			if (par >= sizeof (TagParams) / 2)
+				return ACK_PARAM;
+			((word*)&TagParams) [par] = htons (*buf);
+			buf++;
+			len--;
+		}
+		par++;
+		pmask >>= 1;
+	}
+
+	return ACK_OK;
+}
+
+// ============================================================================
+
 void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 
 	word ret;
@@ -212,6 +286,20 @@ void handle_rf_packet (byte code, byte ref, const address par, word pml) {
 				ret = sensing_configure (
 			    		&(((const command_config_t*) par)->
 						confdata), pml);
+			}
+			break;
+
+		case command_setp_code:
+
+			if (((const command_setp_t*) par)->params . size ==
+			 	0) {
+				if ((ret = send_params ()) == ACK_OK)
+					return;
+			} else {
+				// Set parameters
+				ret = set_params (
+			    		&(((const command_setp_t*) par)->
+						params), pml);
 			}
 			break;
 
@@ -327,17 +415,15 @@ static void buttons (word but) {
 	// Ignore the other button for now
 }
 		
-#ifndef __SMURPH__
+#if HIBERNATE_ON_START
 
 fsm root (aword sflags) {
 
 	state RS_INIT:
 
-#if 1
 		if (sflags == 0)
 			// Start in hibernating state, wakeup on button
 			hibernate ();
-#endif
 #else
 
 fsm root {

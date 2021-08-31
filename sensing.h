@@ -14,12 +14,17 @@
 #include "sysio.h"
 #include "ossi.h"
 
+// Set to zero to disable FIFO
+#define	MPU9250_FIFO_BUFFER_SIZE		STRM_NCODES
+
 #if defined(__SMURPH__) || !defined(MPU9250_I2C_ADDRESS)
 // The SENSORTAG-specific sensors have to be emulated if we are not running on
 // the actual SENSORTAG device
-#define	EMULATE_SENSORS		1
+#define	EMULATE_SENSORS				1
+#undef	MPU9250_FIFO_BUFFER_SIZE
+#define	MPU9250_FIFO_BUFFER_SIZE		0
 #else
-#define	EMULATE_SENSORS		0
+#define	EMULATE_SENSORS				0
 #endif
 
 #if EMULATE_SENSORS && !defined(__SMURPH__)
