@@ -101,7 +101,7 @@ set ACKCODE(131)	"command too long"
 # (TODO) check if the speed can be increased
 
 oss_interface -id 0x00010022 -speed 256000 -length 56 \
-	-parser { parse_cmd show_msg start_up }
+	-parser { parse_cmd show_msg gui_start }
 
 #############################################################################
 #############################################################################
@@ -109,8 +109,6 @@ oss_interface -id 0x00010022 -speed 256000 -length 56 \
 oss_command config 0x01 {
 #
 # Sensor configuration, no arguments -> poll
-#
-#	pppvvvvvvvvvvvvv	ppp -> parameter, vvvv -> value
 #
 	blob	confdata;
 }
@@ -432,8 +430,6 @@ proc help_config { } {
 	oss_ttyout $res
 }
 
-
-
 proc parse_cmd_configure { } {
 
 	variable SNAMES
@@ -679,7 +675,7 @@ proc parse_cmd_stream { } {
 
 	if { $lm != "" } {
 		# verify
-		if [catch { oss_valint $lm 1 } lm] {
+		if [catch { oss_valint $lm 0 } lm] {
 			error "illegal -limit, must be >= 1"
 		}
 		set CPARAMS(0,L) $lm
@@ -1392,14 +1388,6 @@ proc show_msg_mreg { msg } {
 	oss_out $res
 }
 
-proc start_up { } {
-#
-# Send a dummy ap message to initialize the reference counter
-#
-	# oss_dump -incoming -outgoing
-	oss_issuecommand 0x08 [oss_setvalues [list 0 0 0 0] "ap"]
-}
-
 proc timing_start { } {
 
 	variable CTiming
@@ -1477,4 +1465,363 @@ proc show_eot { ref dat } {
 			issue_stop
 		}
 	}
+}
+
+proc gui_start { } {
+#
+# Use this function to startup own GUI
+#
+	# return
+
+	mkRootWindow
+}
+
+###############################################################################
+###############################################################################
+
+variable FFont {-family courier -size 10}
+variable SFont {-family courier -size 9}
+variable WI
+
+set WI(FName) "stream_data.txt"
+set WI(Limit) 0
+
+# status: 0 idle, 1 starting, 2 running, 3 stopping
+set WI(STA)   0
+
+proc mkRootWindow { } {
+
+	variable FFont
+	variable WI
+
+	set uw [oss_getwin]
+
+	wm title $uw "DOGS 0.8"
+
+	set WI(WIN) $uw
+
+	set w [frame $uw.top]
+	pack $w -side top -expand y -fill both
+
+	# the mark buttons 
+	foreach i { 0 1 2 3 } c { red blue yellow green } \
+	    t { "MARK 1" "MARK 2" "MARK 3" "MARK 4" } {
+		set b [button $w.b$i -text $t \
+			-command "[sy_localize cbclick USER] $i $c $t" \
+			-bg $c]
+		grid $b -column $i -row 0 -sticky news -padx 1 -pady 1
+		grid columnconfigure $w $i -weight 1
+	}
+
+	set b [button $w.stop -text "STOP" \
+		-command "[sy_localize startstop USER] 0" -width 14]
+	grid $b -column 0 -row 1 -sticky news -padx 1 -pady 1
+	set WI(STOP) $b
+
+	set b [button $w.save -text "SETUP" \
+		-command "[sy_localize setpars USER]" -width 14]
+	grid $b -column 1 -row 1 -sticky news -padx 1 -pady 1
+	set WI(PARS) $b
+
+	set b [button $w.strt -text "START" \
+		-command "[sy_localize startstop USER] 1" -width 14]
+	grid $b -column 2 -row 1 -sticky news -padx 1 -pady 1
+
+	set b [button $w.wake -text "WAKE" \
+		-command "[sy_localize startstop USER] 2" -width 14]
+	grid $b -column 3 -row 1 -sticky news -padx 1 -pady 1
+
+	grid rowconfigure $w 0 -weight 3
+	grid rowconfigure $w 1 -weight 1
+
+	set WI(STRT) $b
+
+	bind $uw <Destroy> [sy_localize terminate USER]
+}
+
+###############################################################################
+
+proc cw { } {
+#
+# Returns the window currently in focus or null if this is the root window
+#
+	set w [focus]
+	if { $w == "." } {
+		set w ""
+	}
+
+	return $w
+}
+
+proc md_window { tt { lv 0 } } {
+#
+# Creates a modal dialog
+#
+	variable P
+
+	set w [cw].modal$lv
+	catch { destroy $w }
+	set P(M$lv,WI) $w
+	toplevel $w
+	wm title $w $tt
+
+	if { $lv > 0 } {
+		set l [expr $lv - 1]
+		if [info exists P(M$l,WI)] {
+			# release the grab of the previous level window
+			catch { grab release $P(M$l,WI) }
+		}
+	}
+
+	# this fails sometimes
+	catch { grab $w }
+	return $w
+}
+
+proc md_stop { { lv 0 } } {
+#
+# Close operation for a modal window
+#
+	variable P
+
+	if [info exists P(M$lv,WI)] {
+		catch { destroy $P(M$lv,WI) }
+	}
+	array unset P "M$lv,*"
+	# make sure all upper modal windows are destroyed as well; this is
+	# in case grab doesn't work
+	for { set l $lv } { $l < 10 } { incr l } {
+		if [info exists P(M$l,WI)] {
+			md_stop $l
+		}
+	}
+	# if we are at level > 0 and previous level exists, make it grab the
+	# pointers
+	while { $lv > 0 } {
+		incr lv -1
+		if [info exists P(M$lv,WI)] {
+			catch { grab $P(M$lv,WI) }
+			break
+		}
+	}
+}
+
+proc md_wait { { lv 0 } } {
+#
+# Wait for an event on the modal dialog
+#
+	variable P
+
+	set P(M$lv,EV) 0
+	vwait [sy_localize P(M$lv,EV) USER]
+	if ![info exists P(M$lv,EV)] {
+		return -1
+	}
+	if { $P(M$lv,EV) < 0 } {
+		# cancellation
+		md_stop $lv
+		return -1
+	}
+
+	return $P(M$lv,EV)
+}
+
+proc md_click { val { lv 0 } } {
+#
+# Generic done event for modal windows/dialogs
+#
+	variable P
+
+	if { [info exists P(M$lv,EV)] && $P(M$lv,EV) == 0 } {
+		set P(M$lv,EV) $val
+	}
+}
+
+###############################################################################
+
+proc alert { msg } {
+
+	tk_dialog [cw].alert "Attention!" "${msg}!" "" 0 "OK"
+}
+
+proc setpars { } {
+
+	variable WI
+	variable DP
+	variable CPARAMS
+	variable FFont
+
+	set w [md_window "Streaming paramaters"]
+
+	lassign $CPARAMS(0) op th lp rg ba ra co
+
+	set lpls { 0.24 0.49 0.98 1.95 3.91 7.81 15.63 31.25 62.5 125 250 500 }
+	set rgls { 2g 4g 8g 16g }
+	set bals { 5 10 20 41 92 184 460 460/2100 }
+
+	set DP(RNGE) [lindex $rgls $rg]
+	set DP(BAND) [lindex $bals $ba]
+	set DP(RATE) $ra
+	set DP(FNAM) $WI(FName)
+	set DP(LIMI) $WI(Limit)
+
+	##
+	set f $w.rg
+	frame $f
+	pack $f -side top -expand y -fill x
+	label $f.l -text "Range: "
+	pack $f.l -side left -expand n
+	eval "tk_optionMenu $f.m [sy_localize DP(RNGE) USER] \
+		[split [join $rgls]]"
+	pack $f.m -side right -expand n
+
+	##
+	set f $w.ba
+	frame $f
+	pack $f -side top -expand y -fill x
+	label $f.l -text "Bandwidth: "
+	pack $f.l -side left -expand n
+	eval "tk_optionMenu $f.m [sy_localize DP(BAND) USER] \
+		[split [join $bals]]"
+	pack $f.m -side right -expand n
+
+	##
+	set f $w.ra
+	frame $f
+	pack $f -side top -expand y -fill x
+	label $f.l -text "Sampling rate divisor: "
+	pack $f.l -side left -expand n
+	entry $f.e -width 3 -font $FFont \
+		-textvariable [sy_localize DP(RATE) USER]
+	pack $f.e -side right -expand n
+
+	##
+	set f $w.rf
+	frame $f
+	pack $f -side top -expand y -fill x
+	label $f.l -text "File name:   "
+	pack $f.l -side left -expand n
+	entry $f.e -width 32 -font $FFont \
+		-textvariable [sy_localize DP(FNAM) USER]
+	pack $f.e -side right -expand n
+
+	##
+	set f $w.li
+	frame $f
+	pack $f -side top -expand y -fill x
+	label $f.l -text "Limit: "
+	pack $f.l -side left -expand n
+	entry $f.e -width 6 -font $FFont \
+		-textvariable [sy_localize DP(LIMI) USER]
+	pack $f.e -side right -expand n
+
+	##
+	set f $w.tj
+	frame $f
+	pack $f -side top -expand y -fill x
+	button $f.c -text "Cancel" -command "[sy_localize md_click USER] -1"
+	pack $f.c -side left -expand n
+	button $f.d -text "Done" -command "[sy_localize md_click USER] 1"
+	pack $f.d -side right -expand n
+
+	bind $w <Destroy> "[sy_localize md_click USER] -1"
+
+	while 1 {
+		set ev [md_wait]
+		if { $ev < 0 } {
+			# cancelled
+			array unset DP
+			return
+		}
+
+		if { $ev == 1 } {
+			# accepted
+			set rg [lsearch -exact $rgls $DP(RNGE)]
+			if { $rg < 0 } {
+				set rg 0
+			}
+			set ba [lsearch -exact $bals $DP(BAND)]
+			if { $ba < 0 } {
+				set ba 0
+			}
+			set ra $DP(RATE)
+			if [catch { oss_valint $ra 0 255 } val] {
+				alert "Illegal rate divider, $val"
+				continue
+			}
+			set ra $val
+
+			set fn $DP(FNAM)
+			if { $fn == "" } {
+				alert "File name cannot be empty"
+				continue
+			}
+
+			set li $DP(LIMI)
+			if [catch { oss_valint $li 0 } val] {
+				alert "Illegal limit, must be >= 0"
+				continue
+			}
+			set li $val
+			
+			md_stop
+
+			set WI(FName) $fn
+			set WI(Limit) $li
+			set CPARAMS(0) [list 2 32 0 $rg $ba $ra 1]
+			array unset DP
+			return
+		}
+	}
+}
+
+proc startstop { on } {
+
+	variable WI
+	variable StrFD
+
+	if ![oss_isconnected] {
+		oss_out "NOT CONNECTED!"
+		return
+	}
+
+	if { $on == 0 } {
+		parse_cmd "stop"
+		return
+	}
+
+	if { $on == 1 } {
+		if { $StrFD != "" } {
+			oss_out "PREVIOUS SESSION NOT COMPLETED!"
+			return
+		}
+		parse_cmd "stream -file $WI(FName) -limit $WI(Limit)"
+		return
+	}
+
+	if { $StrFD != "" } {
+		oss_out "PREVIOUS SESSION NOT COMPLETED!"
+		return
+	}
+	parse_cmd "wake"
+}
+
+proc cbclick { args } {
+
+	variable StrFD
+
+	set str [join $args]
+
+	if { $StrFD == "" } {
+		oss_out "Mark: $str \[VOID!\]"
+		return
+	}
+
+	puts $StrFD "[timing] M: $str"
+	oss_out "Mark: $str"
+}
+
+proc terminate { } {
+
+	oss_exit
 }

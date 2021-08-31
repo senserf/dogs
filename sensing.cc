@@ -241,7 +241,7 @@ static void sensor_on_mpu9250 () {
 	if (mpu9250_conf [6] & 8)
 		options |= MPU9250_SEN_TEMP;
 
-	// And paste it into the options
+	// Paste the rate divider into the options
 	options |= ((lword) mpu9250_conf [5]) << 24;
 
 	// Forced low power mode

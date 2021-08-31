@@ -190,7 +190,7 @@ fsm streaming_trainsender {
 
 #if MPU9250_FIFO_BUFFER_SIZE
 
-// Use FIFO
+// Use FIFO (this doesn't work with LP mode)
 static word sg_delay = 4;
 
 static void fifo_start () {
