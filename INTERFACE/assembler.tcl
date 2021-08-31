@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 #	Copyright 2002-2020 (C) Olsonet Communications Corporation
-#	Programmed by Pawel Gburzynski & Wlodek Olesinski
+#	Programmed by Pawel Gburzynski
 #	All rights reserved
 #
 #	This file is part of the PICOS platform
@@ -31,6 +31,7 @@ set ILNUM		0
 proc err { m } {
 
 	puts stderr $m
+	exit 1
 }
 
 proc readline { } {
@@ -60,11 +61,48 @@ proc to_f16 { w } {
 	return [format %7.4f [expr { $w / 32768.0 }]]
 }
 
-proc wblk { bn bl } {
+proc wblk { bn bl { ts -1 } } {
 
-	global OFD
+	global OFD MARKS
 
-	puts -nonewline $OFD "$bn\n$bl"
+	if { $ts < 0 } {
+		# estimate block time
+		set ts [ebt $bn]
+	}
+
+	while { $MARKS != "" } {
+		# the time of the mark
+		set tm [lindex $MARKS 0 0]
+		if { $tm > $ts } {
+			break
+		}
+		puts $OFD "@ [lindex $MARKS 0 1]"
+		set MARKS [lrange $MARKS 1 end]
+	}
+
+	puts -nonewline $OFD "$bn $ts\n$bl"
+}
+
+proc ebt { bn } {
+#
+# Estimate block time based on current running rate
+#
+	variable TIMING
+
+	if { $TIMING(b) == 0 } {
+		# will not happen
+		return 0
+	}
+
+	set t [expr { round($TIMING(A) +
+		(($TIMING(B) - $TIMING(A)) / double($TIMING(b) - $TIMING(a))) *
+			($bn - $TIMING(a))) } ]
+
+	if { $t < 0 } {
+		return 0
+	} else {
+		return $t
+	}
 }
 
 proc block_line { ln } {
@@ -105,24 +143,21 @@ proc block_line { ln } {
 
 	if { $bn == $SMEXP } {
 		# on-time arrival
-		wblk $bn $bl
+		wblk $bn $bl $CTS
 		incr SMEXP
 		if { $LIMIT && $bn >= $LIMIT } {
 			set MORE 0
 		} else {
 			advance
 		}
-		if { $TIMING(MIN,N) < 10 } {
-			lappend TIMING(MIN) [list $bn $CTS]
-			incr TIMING(MIN,N)
+		if { $TIMING(a) == 0 } {
+			set TIMING(a) $bn
+			set TIMING(A) $CTS
 			return
 		}
-		if { $TIMING(MAX,N) == 10 } {
-			set TIMING(MAX) [lrange $TIMING(MAX) 1 end]
-		} else {
-			incr TIMING(MAX,N)
-		}
-		lappend TIMING(MAX) [list $bn $CTS]
+		# calculate the running rate in milliseconds / block
+		set TIMING(b) $bn
+		set TIMING(B) $CTS
 		return
 	}
 
@@ -283,7 +318,7 @@ proc flush_stash { } {
 
 proc main { } {
 
-	global argv IFD OFD ILNUM CTS STA SMEXP LIMIT MORE TIMING
+	global argv IFD OFD ILNUM CTS STA SMEXP LIMIT MORE TIMING MARKS
 
 	set fn [lindex $argv 0]
 
@@ -329,11 +364,13 @@ proc main { } {
 	set LIMIT $lm
 	set MORE 1
 
-	# for timing
-	set TIMING(MIN,N) 0
-	set TIMING(MAX,N) 0
-	set TIMING(MIN) ""
-	set TIMING(MAX) ""
+	# for estimating block timing
+	set TIMING(a) 0
+	set TIMING(A) 0
+	set TIMING(b) 0
+	set TIMING(B) 0
+
+	set MARKS ""
 
 	while { $MORE } {
 		set ln [readline]
@@ -347,6 +384,11 @@ proc main { } {
 			block_line $ln
 		} elseif { $tp == "E" } {
 			eot_line $ln
+		} elseif { $tp == "M" } {
+			if ![regexp {^[[:digit:]]+} $ln ma] {
+				err "bad mark id, line number $ILNUM"
+			}
+			lappend MARKS [list $CTS $ma]
 		} else {
 			err "bad line type $tp, line number $ILNUM"
 		}
@@ -355,30 +397,16 @@ proc main { } {
 	# the tail
 	flush_stash
 
-	# estimate timing
-	set n $TIMING(MIN,N)
-	set m $TIMING(MAX,N)
+	# estimate the rate
 
-	if { $n < $m } {
-		set TIMING(MAX) [lrange $TIMING(MAX) [expr { $m - $n }] end]
+	if { $TIMING(b) == 0 } {
+		set f 0.0
 	} else {
-		set n $m
+		set f [expr { (double($TIMING(b) - $TIMING(a)) /
+			($TIMING(B) - $TIMING(A))) * 12000.0 }]
+		set f [format %1.3f $f]
 	}
 
-	if { $n > 0 } {
-		set f 0.0
-		for { set i 0 } { $i < $n } { incr i } {
-			lassign [lindex $TIMING(MIN) $i] ba ta
-			lassign [lindex $TIMING(MAX) $i] bb tb
-			set d [expr { ((1000.0 * 12.0) / ($tb - $ta)) *
-				($bb - $ba) }]
-			set f [expr { $f + $d }]
-		}
-		set f [format %1.3f [expr { $f / $n } ]]
-	} else {
-		set f 0.0
-	}
-	
 	# trailer
 	set hd "T: $f [expr { $SMEXP - 1 }] $STA(NLOST) $STA(NOBSO)\
 		$STA(QDROP) $STA(FOVFL) $STA(MALLF)"
