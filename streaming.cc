@@ -74,11 +74,11 @@ static void add_current () {
 	else
 		BTail = (BTail -> next = CBuilt);
 
-	if (CCar == NULL && TSStat == STRM_TSSTAT_WDAT) {
-		// The train is running, and the dispatcher is waiting for a
-		// car
+	if (CCar == NULL) {
 		CCar = CBuilt;
-		ptrigger (TSender, TSender);
+		if (TSStat == STRM_TSSTAT_WDAT)
+			// The dispatcher is waiting for a car
+			ptrigger (TSender, TSender);
 	}
 
 	NQueued++;

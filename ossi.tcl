@@ -701,7 +701,8 @@ proc parse_cmd_stream { } {
 
 	if { $StrFD != "" } {
 		# the header: time, seonsor conf, limit
-		puts $StrFD "$tm [join [lrange $rs 2 end]] $CPARAMS(0,L)"
+		puts $StrFD "$tm [join [lrange $rs 2 end]] $CPARAMS(0,L)\
+			[clock format [expr { $tm / 1000 }]]"
 	}
 }
 
@@ -1473,7 +1474,16 @@ proc gui_start { } {
 #
 	# return
 
+
+	variable CPARAMS
+
+	# set the IMU defaults to ones that are good for streaming
+	set CPARAMS(0) [list 2 32 0 0 3 7 1]
+
 	mkRootWindow
+
+	# connect
+	sy_reconnect
 }
 
 ###############################################################################
@@ -1493,11 +1503,12 @@ proc mkRootWindow { } {
 
 	variable FFont
 	variable WI
+	variable UFRAME
+
+	# set uw [oss_getwin 1]
+	# wm title $uw "DOGS 0.8"
 
 	set uw [oss_getwin]
-
-	wm title $uw "DOGS 0.8"
-
 	set WI(WIN) $uw
 
 	set w [frame $uw.top]

@@ -14,6 +14,7 @@ set STA(QDROP)		0
 set STA(FOVFL)		0
 set STA(MALLF)		0
 set STA(NOBSO)		0
+set STA(NOORD)		0
 set STA(NLOST)		0
 set STA(NSTSH)		0
 set STA(LTBLK)		0
@@ -125,7 +126,6 @@ proc block_line { ln } {
 		err "illegal block line $ILNUM, $ln"
 	}
 
-	# to be replaced with null after tests
 	set bl ""
 
 	foreach c $vals {
@@ -221,12 +221,17 @@ proc stash { bn bl } {
 		set STASH [list $it]
 		set STASH_MAX $bn
 		set STASH_MIN $bn
+		incr STA(NOORD)
 		return
 	}
 
 	if { $bn > $STASH_MAX } {
 		lappend STASH $it
-		set STASH_MAX $bn
+		incr STASH_MAX
+		if { $bn > $STASH_MAX } {
+			incr STA(NOORD)
+			set STASH_MAX $bn
+		}
 		return
 	}
 
@@ -247,6 +252,7 @@ proc stash { bn bl } {
 		if { $ix == 0 } {
 			set STASH_MIN $bn
 		}
+		incr STA(NOORD)
 		return
 	}
 }
@@ -408,7 +414,7 @@ proc main { } {
 	}
 
 	# trailer
-	set hd "T: $f [expr { $SMEXP - 1 }] $STA(NLOST) $STA(NOBSO)\
+	set hd "T: $f [expr { $SMEXP - 1 }] $STA(NOORD) $STA(NLOST) $STA(NOBSO)\
 		$STA(QDROP) $STA(FOVFL) $STA(MALLF)"
 	puts $OFD $hd
 
@@ -416,6 +422,7 @@ proc main { } {
 	puts stderr "Total blocks:            [expr { $SMEXP - 1}]"
 	puts stderr "Rate:                    $f"
 	puts stderr "On stash flush:          $STA(LTBLK)"
+	puts stderr "Out of order:            $STA(NOORD)"
 	puts stderr "Lost (hard):             $STA(NLOST)"
         puts stderr "Duplicate:               $STA(NOBSO)"
 	puts stderr "Queue drops:             $STA(QDROP)"

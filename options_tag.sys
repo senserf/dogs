@@ -37,8 +37,8 @@
 
 // ============================================================================
 
-#define	HIBERNATE_ON_START		0	// 1
-#define	AUTO_WOR_COUNTDOWN		0	// 30 (seconds)
+#define	HIBERNATE_ON_START		1	// 1
+#define	AUTO_WOR_COUNTDOWN		30	// 30 (seconds)
 
 #ifdef __SMURPH__
 
