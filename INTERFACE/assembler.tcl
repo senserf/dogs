@@ -418,6 +418,12 @@ proc main { } {
 		$STA(QDROP) $STA(FOVFL) $STA(MALLF)"
 	puts $OFD $hd
 
+	set s [expr { $TIMING(B) / 1000 }]
+	set h [expr { $s / 3600 }]
+	set s [expr { $s - $h * 3600 }]
+	set m [expr { $s / 60 }]
+	set s [expr { $s - $m * 60 }]
+ 
 	# statistics
 	puts stderr "Total blocks:            [expr { $SMEXP - 1}]"
 	puts stderr "Rate:                    $f"
@@ -428,6 +434,7 @@ proc main { } {
 	puts stderr "Queue drops:             $STA(QDROP)"
 	puts stderr "FIFO overflows:          $STA(FOVFL)"
         puts stderr "Malloc faults:           $STA(MALLF)"
+	puts stderr "Duration:                $h hours, $m minutes, $s seconds"
 }
 
 main

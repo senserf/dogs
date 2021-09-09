@@ -655,10 +655,26 @@ proc parse_cmd_stream { } {
 
 	# check for file name (occurring anywhere) and handle it before the
 	# sensor specific arguments
-	set fn [oss_parse -match \
-		{-(file|fil|fi|f)[[:space:]]+([^-][^[:space:]]*)}]
+	set fn [oss_parse -checkpoint -match \
+		{-(file|fil|fi|f)[[:space:]]+} -then -string]
+
 	if { $fn != "" } {
-		set fn [lindex $fn 2]
+		# file name as a string
+		set lm [lindex $fn 2]
+		set fn ""
+		foreach rs $lm {
+			append fn [format %c $rs]
+		}
+	} else {
+		# try direct
+		set fn [oss_parse -match \
+			{-(file|fil|fi|f)[[:space:]]+([^-][^[:space:]]*)}]
+		if { $fn != "" } {
+			set fn [lindex $fn 2]
+		}
+	}
+
+	if { $fn != "" } {
 		if { $StrFD != "" } {
 			error "a file is already opened (session in progress?)"
 		}
@@ -690,6 +706,10 @@ proc parse_cmd_stream { } {
 
 	# let this update the complete local-side config
 	set rs [do_config "imu"]
+
+	parse_empty
+
+
 	# now prepare the config to send to the device
 	set rs [list 0 0x7f]
 	foreach p $CPARAMS(0) {
@@ -1710,10 +1730,10 @@ proc setpars { } {
 	set f $w.rf
 	frame $f
 	pack $f -side top -expand y -fill x
-	label $f.l -text "File name:   "
+	set fnml "File name: $DP(FNAM)"
+	label $f.l -text $fnml
 	pack $f.l -side left -expand n
-	entry $f.e -width 32 -font $FFont \
-		-textvariable [sy_localize DP(FNAM) USER]
+	button $f.e -text "Select" -command "[sy_localize set_fname USER] $f.l"
 	pack $f.e -side right -expand n
 
 	##
@@ -1786,6 +1806,19 @@ proc setpars { } {
 	}
 }
 
+proc set_fname { ww } {
+
+	variable DP
+
+	set fi [tk_getSaveFile -defaultextension ".txt" -parent "." -title "File to store data" \
+		-initialfile [file tail $DP(FNAM)] -initialdir [file dirname $DP(FNAM)]]
+
+	if { $fi != "" } {
+		set DP(FNAM) $fi
+		$ww configure -text "File name: $fi"
+	}
+}
+
 proc startstop { on } {
 
 	variable WI
@@ -1806,7 +1839,7 @@ proc startstop { on } {
 			oss_out "PREVIOUS SESSION NOT COMPLETED!"
 			return
 		}
-		parse_cmd "stream -file $WI(FName) -limit $WI(Limit)"
+		parse_cmd "stream -file \"$WI(FName)\" -limit $WI(Limit)"
 		return
 	}
 
