@@ -46,8 +46,8 @@
 // which must be a power of two
 #define	STRM_MAP_SIZE		256
 #define	STRM_MAP_MASK		(STRM_MAP_SIZE - 1)
-// The block span is equal to 8 * MAP_SIZE - 7; this is the worst case number
-// of blocks from the actual (unaligned) offset accommodated in the map
+// The block span is equal to 8 * MAP_SIZE - 7; this is the maximum safe number
+// of blocks that can be assumed to be accommodated in the map
 #define	STRM_MAX_BLOCKSPAN	(8 * STRM_MAP_SIZE - 7)
 // TX space between cars; make it a parameter? Should be larger than the
 // intrinsic space of the driver with LBT off

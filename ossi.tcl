@@ -1476,7 +1476,7 @@ proc show_eot { ref dat } {
 	}
 
 	oss_out "E: [format %10u $last] [format %5u $offset]\
-		${bat}V [format F=%02x $flg]"
+		${bat}V $flg"
 
 	if { $CPARAMS(0,L) != 0 } {
 		# there is a limit, compute oldest available block number

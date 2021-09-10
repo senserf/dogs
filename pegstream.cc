@@ -15,10 +15,43 @@ static byte ackb [STRM_MAX_ACKPAY];
 static sint aend, aibm;
 static lword alst;
 
-// The bitmap holds at least STRM_MAX_BLOCKSPAN-1 block status bits counting
+// Bit count per byte
+static const byte bit_count [256] =
+	{ 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+		1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+		1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+		1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+		2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+		3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+		3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+		4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8	 };
+
+// The bitmap holds up to STRM_MAX_BLOCKSPAN block status bits counting
 // from bbase; bo is assumed to be divided by 8 (representing an aligned
 // 8-tuple)
 #define	bme(bo)	bmap [(bo) & STRM_MAP_MASK]
+
+static void m_bzero (byte *m, word cnt) {
+//
+// This is a version of bzero counting ones in the cleared area; this tells
+// us how many blocks have been irretrievably lost (from our perspective)
+//
+	while (cnt--) {
+		if (*m) {
+			loss_count += bit_count [*m];
+			*m = 0;
+		}
+		m++;
+	}
+}
 
 static inline void shift_bitmap (lword by_this) {
 
@@ -30,28 +63,28 @@ static inline void shift_bitmap (lword by_this) {
 
 	// Need to zero out the reclaimed area between pi and ci - 1
 	if (pi < ci) {
-		bzero (bmap + pi, ci - pi);
+		m_bzero (bmap + pi, ci - pi);
 	} else {
-		bzero (bmap + pi, STRM_MAP_SIZE - pi);
-		bzero (bmap, ci);
+		m_bzero (bmap + pi, STRM_MAP_SIZE - pi);
+		m_bzero (bmap, ci);
 	}
 }
 
 static void extend_bitmap (lword bo) {
 //
-// Adjust the bitmap to accommodate a new tail block number
+// Make sure the bitmap accommodates the block number bo; bo is already
+// aligned (i.e., divided by 8)
 //
 	lword ne;
 
-	// Both bo and bbase are 8-tuple indexes
 	if (bo - bbase >= STRM_MAP_SIZE) {
 		// The base must be shifted, ne == by how much
 		ne = bo - bbase - STRM_MAP_SIZE + 1;
 		if (ne >= STRM_MAP_SIZE) {
 			// By more than the map length, so we invalidate the
 			// entire content
-			bzero (bmap, STRM_MAP_SIZE);
-			// Can start straight from here
+			m_bzero (bmap, STRM_MAP_SIZE);
+			// Can start from here
 			bbase = bo;
 			return;
 		}
@@ -66,15 +99,14 @@ static inline void shrink_bitmap (lword bo) {
 //
 	lword ne;
 
-	if ((bo >>= 3) > bbase) {
+	if (bo > bbase) {
 		ne = bo - bbase;
 		if (ne >= STRM_MAP_SIZE) {
-			bzero (bmap, STRM_MAP_SIZE);
+			m_bzero (bmap, STRM_MAP_SIZE);
 			bbase = bo;
-			return;
+		} else {
+			shift_bitmap (ne);
 		}
-
-		shift_bitmap (ne);
 	}
 }
 
@@ -85,14 +117,19 @@ static inline void add_to_map (lword from, lword upto) {
 	lword bo;
 	sint bb;
 
-	bo = from >> 3;
+	if ((bo = from >> 3) < bbase)
+		// This is impossible
+		return;
+
 	bb = from & 0x7;
+
+	// Make sure bo can be accommodated
 	extend_bitmap (bo);
 
 	do {
 		bme (bo) |= (1 << bb);
 		if (from == upto)
-			break;
+			return;
 		from++;
 		if (bb == 7) {
 			bo++;
@@ -191,6 +228,7 @@ void pegstream_init () {
 
 	bzero (bmap, STRM_MAP_SIZE);
 	lrcvd = bbase = lsent = 0;
+	loss_count = 0;
 }
 
 void pegstream_tally_block (byte ref, address pkt) {

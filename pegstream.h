@@ -17,5 +17,7 @@ void pegstream_init ();
 void pegstream_tally_block (byte, address);
 void pegstream_eot (byte, address);
 
+extern word loss_count;
+
 #endif
 

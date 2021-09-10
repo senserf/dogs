@@ -12,7 +12,7 @@
 
 //
 // It is impossible for the queue to contain a block whose offset from the
-// base (BHead->bn) is larger than MAX_OFFSET.
+// base (BHead->bn) is larger than or equal to STRM_MAX_BLOCKSPAN.
 // Addition wins, BHead is advanced (removed) if the offset turns out large.
 // We keep LastSent (last block sent); the applicable base is always determined
 // by BHead->bn (and can change anytime).

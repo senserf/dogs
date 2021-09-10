@@ -29,6 +29,8 @@ static oss_hdr_t	*CMD;		// Current command ...
 static address		PMT;		// ... and its payload
 static word		PML;		// Length
 
+word 			loss_count;	// Lost blocks reported by the Peg
+
 static command_ap_t	APS = { 0, 2, 0 };		// AP status
 
 // Debugging ==================================================================
@@ -229,7 +231,21 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 	} else if (code == MESSAGE_CODE_ETRAIN) {
 		if (mpl < sizeof (message_etrain_t))
 			return;
+
+#if 1
+		// Debugging ==================================================
+		if (FLoss && (rnd () & 0x3ff) < FLoss) return;
+		// End debugging ==============================================
+#endif
 		pegstream_eot (ref, pkt);
+		// Piggyback the loss_count onto upper nibble; the Tag only
+		// uses three lower flags
+		if (loss_count) {
+			((message_etrain_t*) pkt) -> flags |= 
+				((loss_count > 15) ? 0xf0 :
+					((loss_count & 0xf) << 4));
+			loss_count = 0;
+		}
 	}
 
 	// Pass to OSS, include the RSSI
