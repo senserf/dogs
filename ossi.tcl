@@ -59,6 +59,7 @@ set CPARAMS(pressure)	{
 # The defaults
 #
 set CPARAMS(0)	{ 0 32 6 0 3 7 1 }
+set CPARAMS(0,B) 0
 
 #
 # Convert battery sensor reading to battery voltage
@@ -100,7 +101,7 @@ set ACKCODE(131)	"command too long"
 
 # (TODO) check if the speed can be increased
 
-oss_interface -id 0x00010022 -speed 256000 -length 56 \
+oss_interface -id 0x00010022 -speed 230400 -length 56 \
 	-parser { parse_cmd show_msg gui_start }
 
 #############################################################################
@@ -197,6 +198,7 @@ oss_message status 0x03 {
 	lword	fover;
 	lword	mfail;
 	lword	qdrop;
+	lword	ploss;
 	word	freemem;
 	word	minmem;
 	word	rate;
@@ -701,8 +703,6 @@ proc parse_cmd_stream { } {
 
 	# last-received block number
 	set CPARAMS(0,B) 0
-	# stop flag
-	set CPARAMS(0,S) 0
 
 	# let this update the complete local-side config
 	set rs [do_config "imu"]
@@ -933,8 +933,8 @@ proc sensor_names { act } {
 
 proc show_msg_status { msg } {
 
-	lassign [oss_getvalues $msg "status"] upt tak fov mfa qdr frm mim rat \
-		bat sns sta
+	lassign [oss_getvalues $msg "status"] upt tak fov mfa qdr plo frm \
+		mim rat bat sns sta
 
 	if { $sta == 0 } {
 		set sta "IDLE"
@@ -947,7 +947,7 @@ proc show_msg_status { msg } {
 	set res "Node status ([get_rss $msg]):\n"
 	append res "  Uptime:      [sectoh $upt]\n"
 	append res "  Battery:     [sensor_to_voltage $bat]V\n"
-	append res "  SStats:      F: $fov M: $mfa Q: $qdr\n"
+	append res "  SStats:      F: $fov M: $mfa Q: $qdr P: $plo\n"
 	append res "  Memory:      F: $frm M: $mim\n"
 	append res "  Status:      $sta\n"
 	append res "  Active:      [sensor_names $sns]\n"

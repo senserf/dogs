@@ -13,9 +13,11 @@ exec tclsh "$0" "$@"
 set STA(QDROP)		0
 set STA(FOVFL)		0
 set STA(MALLF)		0
+set STA(PDROP)		0
 set STA(NOBSO)		0
 set STA(NOORD)		0
 set STA(NLOST)		0
+set STA(LLOST)		""
 set STA(NSTSH)		0
 set STA(LTBLK)		0
 
@@ -175,6 +177,21 @@ proc write_null { bn } {
 
 	wblk $bn $bl
 }
+
+proc add_lost { } {
+
+	global SMEXP STA
+
+	write_null $SMEXP
+
+	incr STA(NLOST)
+
+	if { [llength $STA(LLOST) > 9 } {
+		set STA(LLOST) [lrange $STA(LLOST) 1 end]
+	}
+
+	lappend STA(LLOST) $SMEXP
+}
 	
 proc eot_line { ln } {
 
@@ -195,14 +212,17 @@ proc eot_line { ln } {
 		incr STA(QDROP)
 	}
 
+	if { [expr { $fg & 0xf0 }] } {
+		incr STA(PDROP) [expr { ($fg >> 4) & 0x0f }]
+	}
+
 	# the oldest block that still can arrive after this point
 	set ob [expr { $ls - $bk + 1 }]
 
 	while { $MORE && $SMEXP < $ob } {
 		# output a null block
-		write_null $SMEXP
+		add_lost
 		incr SMEXP
-		incr STA(NLOST)
 		if { $LIMIT && $SMEXP > $LIMIT } {
 			set MORE 0
 		} elseif { $STASH != "" && $STASH_MIN <= $SMEXP } {
@@ -305,7 +325,7 @@ proc flush_stash { } {
 	while { $MORE && $STASH != "" } {
 		lassign [lindex $STASH 0] bn bl
 		while { $MORE && $SMEXP < $bn } {
-			write_null $SMEXP
+			add_lost
 			incr SMEXP
 			if { $LIMIT && $SMEXP > $LIMIT } {
 				set MORE 0
@@ -320,6 +340,20 @@ proc flush_stash { } {
 			return
 		}
 	}
+}
+
+proc out_put { t h v } {
+
+	global OFD
+
+	append h ":"
+	set l [string length $h]
+	if { $l < 20 } {
+		append h [string repeat " " [expr { 20 - $l }]]
+	}
+
+	puts stderr "$h $v"
+	puts $OFD "${t}: $h $v"
 }
 
 proc main { } {
@@ -359,13 +393,15 @@ proc main { } {
 	}
 
 	# output the header
-	set hd "H: "
 	set ts [expr { $tm / 1000 }]
-	append hd [clock format $ts -format %c]
 	set ms [expr { $tm % 1000 }]
-	append hd " <$ms>"
-	append hd " : $op $th $lr $rn $ba $ra $co $lm"
-	puts $OFD $hd
+
+	out_put "H" "Start time" \
+		"[clock format $ts -format %c] <[format %03u $ms]>"
+	out_put "H" "Options" [format %02x $op]
+	out_put "H" "Range" $rn
+	out_put "H" "Bandwidth" $ba
+	out_put "H" "Rate" $ra
 
 	set LIMIT $lm
 	set MORE 1
@@ -413,11 +449,6 @@ proc main { } {
 		set f [format %1.3f $f]
 	}
 
-	# trailer
-	set hd "T: $f [expr { $SMEXP - 1 }] $STA(NOORD) $STA(NLOST) $STA(NOBSO)\
-		$STA(QDROP) $STA(FOVFL) $STA(MALLF)"
-	puts $OFD $hd
-
 	set s [expr { $TIMING(B) / 1000 }]
 	set h [expr { $s / 3600 }]
 	set s [expr { $s - $h * 3600 }]
@@ -425,16 +456,20 @@ proc main { } {
 	set s [expr { $s - $m * 60 }]
  
 	# statistics
-	puts stderr "Total blocks:            [expr { $SMEXP - 1}]"
-	puts stderr "Rate:                    $f"
-	puts stderr "On stash flush:          $STA(LTBLK)"
-	puts stderr "Out of order:            $STA(NOORD)"
-	puts stderr "Lost (hard):             $STA(NLOST)"
-        puts stderr "Duplicate:               $STA(NOBSO)"
-	puts stderr "Queue drops:             $STA(QDROP)"
-	puts stderr "FIFO overflows:          $STA(FOVFL)"
-        puts stderr "Malloc faults:           $STA(MALLF)"
-	puts stderr "Duration:                $h hours, $m minutes, $s seconds"
+	out_put "T" "Total blocks" [expr { $SMEXP - 1}]
+	out_put "T" "Rate" $f
+	out_put "T" "Accounted for" $STA(LTBLK)
+	out_put "T" "Out of order"  $STA(NOORD)
+	set w "$STA(NLOST) $STA(PDROP)"
+	if $STA(NLOST) {
+		append w " \[[join $STA(LLOST)]\]"
+	}
+	out_put "T" "Lost (OSS/Peg)" $w
+	out_put "T" "Duplicate" $STA(NOBSO)
+	out_put "T" "Queue drops" $STA(QDROP)
+	out_put "T" "FIFO overflows" $STA(FOVFL)
+	out_put "T" "Malloc faults"  $STA(MALLF)
+	out_put "T" "Time" "$h hours, $m minutes, $s seconds"
 }
 
 main

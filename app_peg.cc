@@ -246,6 +246,9 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 					((loss_count & 0xf) << 4));
 			loss_count = 0;
 		}
+	} else if (code == message_status_code) {
+		// Insert loss_count
+		((message_status_t*) pkt) -> ploss = loss_count;
 	}
 
 	// Pass to OSS, include the RSSI

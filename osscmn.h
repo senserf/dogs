@@ -30,10 +30,11 @@
 
 // ============================================================================
 
-// Message codes >= 128 are special
+// Special message codes >= 128
 #define MESSAGE_CODE_SBLOCK		128	// Streaming block
-#define MESSAGE_CODE_ETRAIN		129	// End of train
 #define	MESSAGE_CODE_STRACK		128 	// Train ACK (app -> tag)
+// This one is known to the OSS
+#define MESSAGE_CODE_ETRAIN		message_etrain_code
 
 // 12 x 4 = 48 bytes; this is the payload size of a streaming packet
 #define	STRM_NCODES		12

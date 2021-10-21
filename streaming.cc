@@ -259,7 +259,8 @@ fsm streaming_generator {
 			nw -= 3;
 		}
 
-	sameas ST_TAKE;
+		// Just loop
+		sameas ST_TAKE;
 }
 
 #else

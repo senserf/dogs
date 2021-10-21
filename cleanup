@@ -1,0 +1,3 @@
+#!/bin/sh
+rm -rf Image_* KTMP_* junk*
+../PICOS/Scripts/permissions

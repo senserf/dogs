@@ -86,16 +86,16 @@ static void extend_bitmap (lword bo) {
 			m_bzero (bmap, STRM_MAP_SIZE);
 			// Can start from here
 			bbase = bo;
-			return;
+		} else {
+			shift_bitmap (ne);
 		}
-
-		shift_bitmap (ne);
 	}
 }
 
 static inline void shrink_bitmap (lword bo) {
 //
-// Adjust the bitmap to remove the useless head
+// Adjust the bitmap to remove the useless head after reception of EOT; bo
+// is the earliest block that still can be asked for
 //
 	lword ne;
 
@@ -112,7 +112,7 @@ static inline void shrink_bitmap (lword bo) {
 
 static inline void add_to_map (lword from, lword upto) {
 //
-// Add blocks from to upto (inclusively) to the map as missing
+// Add blocks from through upto (inclusively) to the map as missing
 //
 	lword bo;
 	sint bb;
@@ -142,7 +142,9 @@ static inline void add_to_map (lword from, lword upto) {
 }
 
 static inline void remove_from_map (lword bn) {
-
+//
+// Removes one block from the map
+//
 	lword bo;
 
 	if (((bo = bn >> 3) >= bbase) && (bo - bbase < STRM_MAP_SIZE))
@@ -197,6 +199,7 @@ static inline Boolean add_ack (lword bn) {
 	}
 
 	if (aend == STRM_MAX_ACKPAY)
+		// Packet full
 		return YES;
 
 	if ((d = bn - alst - 1) <= 5) {
@@ -213,6 +216,7 @@ static inline Boolean add_ack (lword bn) {
 	if (d > 63) {
 		// Need a long offset
 		if (aend == STRM_MAX_ACKPAY - 1)
+			// No room
 			return YES;
 		ackb [aend++] = 0x40 | ((d >> 8) & 0x3f);
 		ackb [aend++] = (byte) d;
@@ -228,16 +232,19 @@ void pegstream_init () {
 
 	bzero (bmap, STRM_MAP_SIZE);
 	lrcvd = bbase = lsent = 0;
+	// This counts blocks that the Peg perceives as irretrievably lost
+	// which means that they were shifted out of the map
 	loss_count = 0;
 }
 
 void pegstream_tally_block (byte ref, address pkt) {
 //
-// Update the bit map
+// Update the bit map upon block reception
 //
 	lword bn, bo;
 	sint bb;
 
+	// Decode the block number
 	for (bn = ref, bb = 0; bb < STRM_NCODES; bb++)
 		bn |= (((lword*)pkt) [bb] & 0x3) << ((bb + bb) + 8);
 
@@ -255,6 +262,8 @@ void pegstream_tally_block (byte ref, address pkt) {
 		// This is what we are betting on, nothing to do
 		return;
 
+	// Add all blocks in between as missing (delayed); we will have to ask
+	// for them in the ACK
 	add_to_map (lrcvd, bn - 1);
 
 	lrcvd = bn;
@@ -279,13 +288,16 @@ void pegstream_eot (byte ref, address pkt) {
 		return;
 
 	if (lsent > lrcvd) {
+		// This doesn't agree with our idea of the last block which
+		// means that the tail has been lost
 		add_to_map (lrcvd + 1, lsent);
 		lrcvd = lsent;
 	}
 
-	// Build the ACK packet
+	// Trim off the bit map and start the ACK
 	init_ack (of);
 
+	// Add all missing blocks <= lsent to the ACK
 	for (bn = bbase, bo = lsent >> 3; bn <= bo; bn++) {
 		// bn indexes 8-tuples, quickly skip zero entries
 		if (bmap [of = bn & STRM_MAP_MASK] != 0) {
@@ -303,7 +315,7 @@ void pegstream_eot (byte ref, address pkt) {
 	if ((msg = osscmn_xpkt (MESSAGE_CODE_STRACK, ref, aend)) != NULL) {
 		memcpy (pkt_payload (msg), ackb, aend);
 		if (aend & 1)
-			// Add a NOP zero map
+			// Add a dummy NOP map
 			((byte*)(pkt_payload (msg))) [aend] = 0x80;
 		tcv_endpx (msg, NO);
 	}

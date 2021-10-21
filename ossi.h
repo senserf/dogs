@@ -6,7 +6,7 @@
 // =================================================================
 
 #define	OSS_PRAXIS_ID		65570
-#define	OSS_UART_RATE		115200
+#define	OSS_UART_RATE		256000
 #define	OSS_PACKET_LENGTH	56
 
 typedef	struct {
@@ -110,6 +110,7 @@ typedef struct {
 	lword	fover;
 	lword	mfail;
 	lword	qdrop;
+	lword	ploss;
 	word	freemem;
 	word	minmem;
 	word	rate;
