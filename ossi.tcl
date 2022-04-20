@@ -96,6 +96,8 @@ set ACKCODE(129) 	"command format error (detected by AP)"
 set ACKCODE(130)	"command format error"
 set ACKCODE(131)	"command too long"
 
+variable RAW		0
+
 #############################################################################
 #############################################################################
 
@@ -806,10 +808,13 @@ proc parse_cmd_setp { } {
 
 proc parse_cmd_ap { } {
 
+	variable RAW
+
 	# unused
 	set nodeid 0xFFFF
 	set loss 0xFFFF
 	set nretr 0xFF
+	set raw $RAW
 
 	while 1 {
 
@@ -818,7 +823,7 @@ proc parse_cmd_ap { } {
 			break
 		}
 
-		set k [oss_keymatch $tp { "node" "retries" "loss" }]
+		set k [oss_keymatch $tp { "node" "retries" "loss" "raw" }]
 
 		if [info exists handled($k)] {
 			error "duplicate -$k"
@@ -832,7 +837,12 @@ proc parse_cmd_ap { } {
 		}
 
 		if { $k == "loss" } {
-			set loss [parse_value "loss" 0 1024]
+			set loss [parse_value "-loss" 0 1024]
+			continue
+		}
+
+		if { $k == "raw" } {
+			set raw [parse_value "-raw" 0 1]
 			continue
 		}
 
@@ -840,6 +850,8 @@ proc parse_cmd_ap { } {
 	}
 
 	parse_empty
+
+	set RAW $raw
 
 	oss_issuecommand 0x08 \
 		[oss_setvalues [list $nodeid $nretr $loss] "ap"]
@@ -1166,6 +1178,12 @@ proc to_f16 { w } {
 #
 # 16-bit to float
 #
+	variable RAW
+
+	if $RAW {
+		return [format %04x $w]
+	}
+
 	if [expr { $w & 0x8000 }] {
 		set w [expr { -65536 + $w }]
 	}
@@ -1185,8 +1203,13 @@ proc get_t16 { bb } {
 # FP scaled as temp/humid (divided by 100.0)
 #
 	upvar $bb data
+	variable RAW
 
 	set w [get_u16 data]
+
+	if $RAW {
+		return [format %04x $w]
+	}
 
 	if [expr { $w & 0x8000 }] {
 		set w [expr { -65536 + $w }]
@@ -1200,8 +1223,13 @@ proc get_t32 { bb } {
 # FP scaled as temp (divided by 100.0)
 #
 	upvar $bb data
+	variable RAW
 
 	set w [get_u32 data]
+
+	if $RAW {
+		return [format %08x $w]
+	}
 
 	if [expr { $w & 0x80000000 }] {
 		set w [expr { -4294967296 + $w }]
@@ -1213,8 +1241,13 @@ proc get_t32 { bb } {
 proc get_i16 { bb } {
 
 	upvar $bb data
+	variable RAW
 
 	set w [get_u16 data]
+
+	if $RAW {
+		return [format %04x $w]
+	}
 
 	if [expr { $w & 0x8000 }] {
 		set w [expr { -65536 + $w }]
@@ -1226,8 +1259,13 @@ proc get_i16 { bb } {
 proc get_n16 { bb } {
 
 	upvar $bb data
+	variable RAW
 
 	set w [get_u16 data]
+
+	if $RAW {
+		return [format %04x $w]
+	}
 
 	return [format %5u $w]
 }
@@ -1235,8 +1273,13 @@ proc get_n16 { bb } {
 proc get_n32 { bb } {
 
 	upvar $bb data
+	variable RAW
 
 	set w [get_u32 data]
+
+	if $RAW {
+		return [format %08x $w]
+	}
 
 	return [format %11u $w]
 }
@@ -1246,8 +1289,13 @@ proc get_e16 { bb } {
 # Exp + manitissa (light)
 #
 	upvar $bb data
+	variable RAW
 
 	set w [get_u16 data]
+
+	if $RAW {
+		return [format %04x $w]
+	}
 
 	set exp [expr { ($w >> 12) & 0xF }]
 	set man [expr { ($w & 0x0FFF) * pow (2.0, $exp) }]
