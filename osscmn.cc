@@ -17,15 +17,18 @@ fsm radio_receiver {
 
 		address pkt;
 		oss_hdr_t *osh;
+		word mpl;
 
 		pkt = tcv_rnp (RS_LOOP, RFC);
-		mark_active;
+		mpl = tcv_left (pkt) - PKT_FRAME_ALL;
 
-		if (tcv_left (pkt) >= PKT_FRAME_ALL) {
-			osh = pkt_osshdr (pkt);
-			handle_rf_packet (osh->code, osh->ref, 
-				pkt_payload (pkt),
-					tcv_left(pkt) - PKT_FRAME_ALL);
+		if (!byte_error (mpl)) {
+			mark_active;
+			if (tcv_left (pkt) >= PKT_FRAME_ALL) {
+				osh = pkt_osshdr (pkt);
+				handle_rf_packet (osh->code, osh->ref, 
+					pkt_payload (pkt), mpl);
+			}
 		}
 
 		tcv_endp (pkt);

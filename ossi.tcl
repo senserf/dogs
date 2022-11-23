@@ -168,8 +168,12 @@ oss_command ap 0x08 {
 	word	nodeid;
 	# Packet retry count
 	byte	nretr;
-	# Packet loss rate (debugging)
+	# Halt flag, to suspend all RF momentarily
+	byte	halt;
+	# Byte loss rate (for simulating bit [byte] errors) interpreted as
+	# times 1^-16
 	word	loss;
+	
 }
 
 oss_command mreg 0x09 {
@@ -298,6 +302,38 @@ proc parse_value { sel min max } {
 	}
 
 	return $val
+}
+
+proc parse_loss { sel } {
+#
+# This is an FP number representing a bit error probability which we convert
+# to a lword in some obscure way
+#
+	set val [oss_parse -skip -number -return 1]
+
+	if { $val == 0 } {
+		return 0
+	}
+
+	if { $val >= 1.0 } {
+		error "$sel, illegal probability, $val"
+	}
+
+	# convert to a byte-error probability
+	set be [expr { 1.0 - pow ((1.0 - $val), 8.0) }]
+
+	set max 65535
+
+	# and multiply by the max
+	set bp [expr { int ($be * $max) }]
+
+	if { $bp > $max } {
+		set bp $max
+	}
+
+	oss_out "BER: $val -> $be -> $bp"
+
+	return $bp
 }
 
 proc parse_empty { } {
@@ -815,6 +851,7 @@ proc parse_cmd_ap { } {
 	set loss 0xFFFF
 	set nretr 0xFF
 	set raw $RAW
+	set halt 0xFF
 
 	while 1 {
 
@@ -823,7 +860,7 @@ proc parse_cmd_ap { } {
 			break
 		}
 
-		set k [oss_keymatch $tp { "node" "retries" "loss" "raw" }]
+		set k [oss_keymatch $tp { "node" "retries" "loss" "raw" "halt" }]
 
 		if [info exists handled($k)] {
 			error "duplicate -$k"
@@ -837,12 +874,17 @@ proc parse_cmd_ap { } {
 		}
 
 		if { $k == "loss" } {
-			set loss [parse_value "-loss" 0 1024]
+			set loss [parse_loss "-loss"]
 			continue
 		}
 
 		if { $k == "raw" } {
 			set raw [parse_value "-raw" 0 1]
+			continue
+		}
+
+		if { $k == "halt" } {
+			set halt [parse_value "-halt" 0 1]
 			continue
 		}
 
@@ -854,7 +896,7 @@ proc parse_cmd_ap { } {
 	set RAW $raw
 
 	oss_issuecommand 0x08 \
-		[oss_setvalues [list $nodeid $nretr $loss] "ap"]
+		[oss_setvalues [list $nodeid $nretr $halt $loss] "ap"]
 }
 
 ###############################################################################
@@ -1434,12 +1476,15 @@ proc show_report_press { d cmp } {
 
 proc show_msg_ap { msg } {
 
+	variable RAW
+
 	lassign [oss_getvalues $msg "ap"] nodeid nretr loss
 
 	set res "AP status:\n"
 	append res "  Node Id (-node):                   $nodeid\n"
 	append res "  Copies of cmd packet (-retries):   $nretr\n"
 	append res "  Loss (packets per 1024):           $loss\n"
+	append res "  Raw:                               $RAW\n"
 
 	oss_out $res
 }
@@ -1892,7 +1937,17 @@ proc startstop { on } {
 	}
 
 	if { $StrFD != "" } {
-		oss_out "PREVIOUS SESSION NOT COMPLETED!"
+		# use to halt unhalt
+		if ![info exists WI(_halted)] {
+			parse_cmd "ap -halt 1"
+			oss_out "HALT!"
+			set WI(_halted) ""
+		} else {
+			parse_cmd "ap -halt 0"
+			oss_out "UNHALT!"
+			unset WI(_halted)
+		}
+		# oss_out "PREVIOUS SESSION NOT COMPLETED!"
 		return
 	}
 	parse_cmd "wake"

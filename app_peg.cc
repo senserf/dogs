@@ -33,10 +33,6 @@ word 			loss_count;	// Lost blocks reported by the Peg
 
 static command_ap_t	APS = { 0, 2, 0 };		// AP status
 
-// Debugging ==================================================================
-static word		FLoss = 0;
-// End debugging ==============================================================
-
 // ============================================================================
 
 static void led_hb () {
@@ -54,6 +50,19 @@ static void led_rx () {
 }
 
 // ============================================================================
+
+#if ERROR_SIMULATOR
+
+static word		FLoss;
+
+Boolean byte_error (word pl) {
+
+	return FLoss && (((lword) FLoss * pl) >= rnd ());
+}
+
+#endif
+
+// ======================
 
 fsm rooster_thread (byte ref) {
 
@@ -148,12 +157,19 @@ static void handle_oss_command () {
 			done++;
 		}
 
-		// Debugging ==================================================
+#if ENABLE_RF_HALT
+		if (pmt->halt != BNONE) {
+			APS.halt = pmt->halt;
+			done++;
+		}
+#endif
+
+#if ERROR_SIMULATOR
 		if (pmt->loss != WNONE) {
 			FLoss = pmt->loss;
 			done++;
 		}
-		// End debugging ==============================================
+#endif
 
 		if (done) {
 			oss_ack (ACK_OK);
@@ -168,9 +184,9 @@ static void handle_oss_command () {
 			msghdr->code = message_ap_code;
 			msghdr->ref = CMD->ref;
 			memcpy (msg + 1, &APS, sizeof (message_ap_t));
-			// Debugging ==========================================
+#if ERROR_SIMULATOR
 			((message_ap_t*)(msg + 1)) -> loss = FLoss;
-			// End debugging ======================================
+#endif
 			tcv_endp (msg);
 		}
 		led_tt ();
@@ -202,6 +218,9 @@ static void handle_oss_command () {
 	i = 0;
 	led_tt ();
 
+	if (ENABLE_RF_HALT && APS.halt)
+		return;
+
 	do {
 		if ((msg = tcv_wnp (WNONE, RFC, PML + PKT_FRAME_ALL)) == NULL)
 			return;
@@ -217,26 +236,20 @@ void handle_rf_packet (byte code, byte ref, address pkt, word mpl) {
 //
 	address msg;
 
+	if (ENABLE_RF_HALT && APS.halt)
+		return;
+
 	led_rx ();
 	if (code == MESSAGE_CODE_SBLOCK) {
 		if (mpl < STRM_NCODES * 4)
 			// Ignore garbage
 			return;
 
-		// Debugging ==================================================
-		if (FLoss && (rnd () & 0x3ff) < FLoss) return;
-		// End debugging ==============================================
-
 		pegstream_tally_block (ref, pkt);
 	} else if (code == MESSAGE_CODE_ETRAIN) {
 		if (mpl < sizeof (message_etrain_t))
 			return;
 
-#if 1
-		// Debugging ==================================================
-		if (FLoss && (rnd () & 0x3ff) < FLoss) return;
-		// End debugging ==============================================
-#endif
 		pegstream_eot (ref, pkt);
 		// Piggyback the loss_count onto upper nibble; the Tag only
 		// uses three lower flags

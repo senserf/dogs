@@ -105,4 +105,10 @@ void handle_rf_packet (byte, byte, const address, word);
 
 #define toggle(a)	((a) = 1 - (a))
 
+#if ERROR_SIMULATOR
+Boolean	byte_error (word);
+#else
+#define	byte_error(a)	NO
+#endif
+
 #endif

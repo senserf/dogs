@@ -34,9 +34,20 @@ tag_params_t	TagParams = {
 				STRM_MAX_QUEUED,
 				STRM_CAR_SPACE,
 				STRM_MIN_TRAIN_SPACE,
+				0,
 			};
 
 stream_stats_t	StreamStats;
+
+#if ERROR_SIMULATOR
+
+Boolean byte_error (word pl) {
+
+	return TagParams.byte_error_rate &&
+		(((lword) (TagParams.byte_error_rate) * pl) >= rnd ());
+}
+
+#endif
 
 // ============================================================================
 
@@ -201,11 +212,10 @@ static word send_params () {
 	for (i = 0; i < sizeof (TagParams) / 2; i++) {
 		pmask |= (1 << i);
 		((word*)(pmt->params.content)) [1 + i] =
-			ntohs (((word*)&TagParams) [i]);
+			htons (((word*)&TagParams) [i]);
 	}
 
-	((word*)(pmt->params.content)) [0] = ntohs (pmask);
-
+	((word*)(pmt->params.content)) [0] = htons (pmask);
 	tcv_endpx (msg, YES);
 
 	return ACK_OK;
@@ -220,24 +230,21 @@ static word set_params (const blob *pms, sint len) {
 		return ACK_LENGTH;
 
 	buf = (word*)(pms->content);
-	len = pms->size / 2 - 1;
+	// Blob size
+	if ((len = pms->size) < 2)
+		return ACK_LENGTH;
+	pmask = ntohs (*buf);
+	buf ++;
 
-	pmask = htons (*buf);
-	buf++;
-
-	par = 0;
-	while (pmask) {
-		if (pmask & 1) {
-			if (len <= 0)
+	for (par = 0; par < sizeof (TagParams) / 2; par++) {
+		if (pmask & (1 << par)) {
+			// Parameter present
+			if (len < 2)
 				return ACK_LENGTH;
-			if (par >= sizeof (TagParams) / 2)
-				return ACK_PARAM;
-			((word*)&TagParams) [par] = htons (*buf);
+			((word*)&TagParams) [par] = ntohs (*buf);
+			len -= 2;
 			buf++;
-			len--;
 		}
-		par++;
-		pmask >>= 1;
 	}
 
 	return ACK_OK;

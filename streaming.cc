@@ -85,6 +85,36 @@ static void add_current () {
 	CBuilt = NULL;
 }
 
+#if RETURN_QUEUE_STATUS
+
+static void fill_current_car (address pkt) {
+//
+// This is a special variant of the function to return the queue status
+// for debugging and statistics collection
+//
+	sint i;
+	lword bn = CCar -> bn;
+
+	pkt_osshdr (pkt) -> code = MESSAGE_CODE_SBLOCK;
+	pkt_osshdr (pkt) -> ref = (byte) bn;
+
+	bn >>= 8;
+
+	((lword*) pkt_payload (pkt)) [0] = (NQueued << 2) | (bn & 0x3);
+	bn >>= 2;
+	((lword*) pkt_payload (pkt)) [1] = (StreamStats.queue_drops << 2) |
+		(bn & 0x3);
+	bn >>= 2;
+
+	for (i = 2; i < STRM_NCODES; i++) {
+		((lword*) pkt_payload (pkt)) [i] =
+			CCar -> block [i] | (bn & 0x3);
+		bn >>= 2;
+	}
+}
+
+#else
+
 static void fill_current_car (address pkt) {
 
 	sint i;
@@ -102,6 +132,8 @@ static void fill_current_car (address pkt) {
 		bn >>= 2;
 	}
 }
+
+#endif
 
 static void fill_eot (address pkt) {
 

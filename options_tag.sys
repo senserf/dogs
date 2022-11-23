@@ -36,9 +36,15 @@
 #endif
 
 // ============================================================================
+// Config/debug
+// ============================================================================
 
 #define	HIBERNATE_ON_START		0	// 1
-#define	AUTO_WOR_COUNTDOWN		30	// 30 (seconds)
+#define	AUTO_WOR_COUNTDOWN		0	// 30
+#define	RETURN_QUEUE_STATUS		0
+#define	ERROR_SIMULATOR			0
+
+// ============================================================================
 
 #ifdef __SMURPH__
 

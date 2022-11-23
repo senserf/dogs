@@ -25,6 +25,7 @@ typedef struct {
 	word		max_queued;
 	word		car_space;
 	word		min_train_space;
+	word		byte_error_rate;
 
 } tag_params_t;
 

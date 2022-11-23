@@ -36,5 +36,9 @@
 #define	RADIO_LBT_MIN_BACKOFF	2
 #define	RADIO_LBT_MAX_BACKOFF	8
 
-
 // ============================================================================
+// Config/debug (for emulating RF errors and blackouts)
+// ============================================================================
+
+#define	ERROR_SIMULATOR		0
+#define	ENABLE_RF_HALT		0
