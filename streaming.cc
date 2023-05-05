@@ -122,7 +122,7 @@ static void fill_current_car (address pkt) {
 
 	pkt_osshdr (pkt) -> code = MESSAGE_CODE_SBLOCK;
 	// The least significant byte goes into ref; this way the ref field
-	// can be used directly as a modulo-256 counter of the block
+	// can be used directly as a modulo-256 block count
 	pkt_osshdr (pkt) -> ref = (byte) bn;
 
 	bn >>= 8;

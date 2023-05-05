@@ -83,6 +83,8 @@ fsm rf_monitor {
 		BatCnt = ACT_BATTMON_FREQ;
 		sameas RFM_ON;
 
+#if ACT_COUNTDOWN
+
 	state RFM_OFF:
 
 		MonWake = 0;
@@ -124,6 +126,7 @@ fsm rf_monitor {
 		osscmn_xack (MonRef, ACK_OK);
 		MonStat = MS_ON;
 		sameas RFM_ON;
+#endif
 }
 
 static void handle_wake (byte ref) {
