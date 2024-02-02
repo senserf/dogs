@@ -431,6 +431,8 @@ fsm root (aword sflags) {
 
 	state RS_INIT:
 
+		word cn;
+
 		if (sflags == 0)
 			// Start in hibernating state, wakeup on button
 			hibernate ();
@@ -440,12 +442,19 @@ fsm root {
 
 	state RS_INIT:
 
+		word cn;
+
 #endif
 		powerdown ();
 
 		led_signal (0, 1, 128);
 		// Initialize the interface in RF active state
 		osscmn_init ();
+
+		// Channel number determined from node Id
+		cn = GROUP_ID & 7;
+		// This never changes for a Tag
+		tcv_control (RFC, PHYSOPT_SETCHANNEL, &cn);
 
 		runfsm rf_monitor;
 

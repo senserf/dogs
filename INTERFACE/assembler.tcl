@@ -186,7 +186,7 @@ proc add_lost { } {
 
 	incr STA(NLOST)
 
-	if { [llength $STA(LLOST) > 9 } {
+	if { [llength $STA(LLOST)] > 9 } {
 		set STA(LLOST) [lrange $STA(LLOST) 1 end]
 	}
 

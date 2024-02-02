@@ -3,6 +3,7 @@ a.out
 *.exe
 Image*
 Makefile*
+.*
 /KTMP*
 /ATTIC
 /MEASUREMENTS

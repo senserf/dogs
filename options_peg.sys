@@ -27,10 +27,8 @@
 
 // ============================================================================
 
-#define	RADIO_WOR_MODE		0
-#define	RADIO_OPTIONS		RADIO_OPTION_PXOPTIONS
-#define	RADIO_DEFAULT_POWER	7
-#define	RADIO_DEFAULT_BITRATE	3
+#include "options_rf.h"
+
 #define	RADIO_RCV_MIN_BACKOFF	0
 #define	RADIO_RCV_MAX_BACKOFF	0
 #define	RADIO_LBT_MIN_BACKOFF	2

@@ -146,9 +146,10 @@ static void handle_oss_command () {
 		if (pmt->nodeid != WNONE) {
 			if (pmt->nodeid != 0) {
 				// Request to set group Id
-				APS.nodeid = pmt->nodeid;
+				i = (APS.nodeid = pmt->nodeid) & 7;
 				tcv_control (RFC, PHYSOPT_SETSID,
 					&(APS.nodeid));
+				tcv_control (RFC, PHYSOPT_SETCHANNEL, &i);
 			}
 			done++;
 		}
@@ -279,13 +280,15 @@ fsm root {
 
 		word si;
 
-		APS.nodeid = GROUP_ID;
+		si = (APS.nodeid = GROUP_ID) & 7;
 
 		led_signal (0, 4, 128);
 
 		phys_uart (1, OSS_PACKET_LENGTH, 0);
 
 		osscmn_init ();
+		// Set channel to match the assumed (initial) node Id
+		tcv_control (RFC, PHYSOPT_SETCHANNEL, &si);
 
 		sd_uart = tcv_open (WNONE, 1, 0);	// The UART
 		si = 0xffff;
