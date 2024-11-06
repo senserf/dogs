@@ -33,6 +33,8 @@
 #define	RADIO_RCV_MAX_BACKOFF	0
 #define	RADIO_LBT_MIN_BACKOFF	2
 #define	RADIO_LBT_MAX_BACKOFF	8
+#define	RADIO_XMT_MIN_BACKOFF	1
+#define	RADIO_XMT_MAX_BACKOFF	1
 
 // ============================================================================
 // Config/debug (for emulating RF errors and blackouts)

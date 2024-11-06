@@ -1257,7 +1257,8 @@ proc get_t16 { bb } {
 		set w [expr { -65536 + $w }]
 	}
 
-	return [format %7.2f [expr { $w / 100.0 }]]
+	# this is in integer tens of whatever the value is supposed to be in
+	return [format %7.2f [expr { $w / 10.0 }]]
 }
 
 proc get_t32 { bb } {
@@ -1416,14 +1417,14 @@ proc show_report_humid { d cmp } {
 
 	set res " HUM:"
 
-	if [expr { $cmp & 0x01 }] {
+	if [expr { $cmp & 0x02 }] {
 		# humidity present
-		append res " \[H [get_t16 data]\]"
+		append res " \[T [get_t16 data]\]"
 	}
 
-	if [expr { $cmp & 0x02 }] {
+	if [expr { $cmp & 0x01 }] {
 		# temp present
-		append res " \[T [get_t16 data]\]"
+		append res " \[H [get_t16 data]\]"
 	}
 
 	return $res

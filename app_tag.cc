@@ -460,6 +460,9 @@ fsm root {
 
 		buttons_action (buttons);
 
+		ossint_send_status ();
+		led_signal (0, 1, 128);
+
 		// That's it, no more use for us
 		finish;
 }
